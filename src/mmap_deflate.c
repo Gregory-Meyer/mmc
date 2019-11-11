@@ -128,7 +128,8 @@ int main(int argc, char *argv[]) {
 
   z_stream stream = {.zalloc = Z_NULL, .zfree = Z_NULL, .opaque = Z_NULL};
 
-  const int init_errc = deflateInit(&stream, Z_BEST_COMPRESSION);
+  const int init_errc =
+      deflateInit2(&stream, args.level, Z_DEFLATED, 15, 8, args.strategy);
 
   if (init_errc != Z_OK) {
     assert(init_errc != Z_STREAM_ERROR);
