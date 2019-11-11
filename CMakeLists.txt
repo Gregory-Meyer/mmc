@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(StreamDeflate VERSION 0.1.0 LANGUAGES C)
+project(MmapDEFLATE VERSION 0.1.0 LANGUAGES C)
 
 find_package(ZLIB REQUIRED)
 
