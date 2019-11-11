@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include <getopt.h>
 
@@ -25,12 +24,12 @@ const char *const VERSION = "mmap-deflate 0.1.0";
 const char *const USAGE = "mmap-deflate 0.1.0\
 \nGregory Meyer <me@gregjm.dev>\
 \n\
-\nmmap-deflate compresses a file using the DEFLATE compression algorithm.\
+\nmmap-deflate (md) compresses a file using the DEFLATE compression algorithm.\
 \nzlib is used for compression and memory-mapped files are used to read and write\
 \ndata to disk.\
 \n\
 \nUSAGE:\
-\n    mmap-deflate [OPTIONS] INPUT_FILE OUTPUT_FILE\
+\n    md [OPTIONS] INPUT_FILE OUTPUT_FILE\
 \n\
 \nARGS:\
 \n    <INPUT_FILE>\

@@ -14,13 +14,41 @@ typedef struct Arguments {
   const char *input_filename;
   const char *output_filename;
   bool has_help;
+  bool has_version;
 } Arguments;
 
-const char *const USAGE_FORMAT =
-    "Usage: %s INPUT_FILE OUTPUT_FILE\n"
-    "Decompress a zlib-compressed INPUT_FILE into OUTPUT_FILE.\n"
-    "\n"
-    " -h, --help               display this message and exit\n";
+const char *const VERSION = "mmap-inflate 0.1.0";
+
+const char *const USAGE = "mmap-inflate 0.1.0\
+\nGregory Meyer <me@gregjm.dev>\
+\n\
+\nmmap-inflate (mi) uncompresses a file that was compressed by mmap-deflate (md)\
+\nusing the DEFLATE compression algorithm. zlib is used for decompression and\
+\nmemory-mapped files are used to read and write data to disk.\
+\n\
+\nUSAGE:\
+\n    mi [OPTIONS] INPUT_FILE OUTPUT_FILE\
+\n\
+\nARGS:\
+\n    <INPUT_FILE>\
+\n            Compressed file to read from. The current user must have the\
+\n            correct permissions to read from this file.\
+\n\
+\n    <OUTPUT_FILE>\
+\n            Filename of the uncompressed file to create. If this file already\
+\n            exists, it is truncated to length 0 before being written to. Should\
+\n            mmap-deflate exit with an error after truncating this file, it will\
+\n            be deletect. The current user must have write permissions in this\
+\n            file's parent directory and, if the file already exists, write\
+\n            permissions on this file.\
+\n\
+\nOPTIONS:\
+\n    -h, --help\
+\n            Prints help information.\
+\n    \
+\n\
+\n    -v, --version\
+\n            Prints version information.";
 
 Error parse_arguments(int argc, char *argv[], Arguments *args);
 Error do_decompress(z_stream *stream, bool *finished);
@@ -36,7 +64,13 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.has_help) {
-    printf(USAGE_FORMAT, executable_name);
+    puts(USAGE);
+
+    return EXIT_SUCCESS;
+  }
+
+  if (args.has_version) {
+    puts(VERSION);
 
     return EXIT_SUCCESS;
   }
@@ -145,11 +179,12 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
   opterr = false;
 
   bool has_help = false;
+  bool has_version = false;
 
   while (true) {
     int option_index;
     const int option_char =
-        getopt_long(argc, argv, "h", OPTIONS, &option_index);
+        getopt_long(argc, argv, "hv", OPTIONS, &option_index);
 
     if (option_char == -1) {
       break;
@@ -158,6 +193,11 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
     switch (option_char) {
     case 'h':
       has_help = true;
+
+      break;
+
+    case 'v':
+      has_version = true;
 
       break;
     case '?':
@@ -169,7 +209,7 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
 
   const char *input_filename;
   if (optind >= argc) {
-    if (!has_help) {
+    if (!has_help && !has_version) {
       return MAKE_ERROR("missing argument INPUT_FILE");
     } else {
       input_filename = NULL;
@@ -180,7 +220,7 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
 
   const char *output_filename;
   if (optind >= argc - 1) {
-    if (!has_help) {
+    if (!has_help && !has_version) {
       return MAKE_ERROR("missing argument OUTPUT_FILE");
     } else {
       output_filename = NULL;
@@ -189,9 +229,10 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
     output_filename = argv[optind + 1];
   }
 
-  *args = (Arguments){.input_filename = argv[optind],
-                      .output_filename = argv[optind + 1],
-                      .has_help = has_help};
+  *args = (Arguments){.input_filename = input_filename,
+                      .output_filename = output_filename,
+                      .has_help = has_help,
+                      .has_version = has_version};
 
   return NULL_ERROR;
 }
