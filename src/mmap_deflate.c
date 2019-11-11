@@ -17,19 +17,48 @@ typedef struct Arguments {
   bool has_help;
   int level;
   int strategy;
+  bool has_version;
 } Arguments;
 
-const char *const USAGE_FORMAT =
-    "Usage: %s [OPTION]... INPUT_FILE OUTPUT_FILE\n"
-    "Compress an INPUT_FILE into OUTPUT_FILE using zlib.\n"
-    "\n"
-    " -h, --help               display this message and exit\n"
-    " -l, --level=LEVEL        compression level for zlib.\n"
-    "                          integer in the range [0, 9].\n"
-    " -s, --strategy=STRATEGY  compression strategy for zlib.\n"
-    "                          one of {'default', 'filtered', 'huffman-only', "
-    "\n"
-    "                          'rle', or 'fixed'}.\n";
+const char *const VERSION = "mmap-deflate 0.1.0";
+
+const char *const USAGE = "mmap-deflate 0.1.0\
+\nGregory Meyer <me@gregjm.dev>\
+\n\
+\nmmap-deflate compresses a file using the DEFLATE compression algorithm.\
+\nzlib is used for compression and memory-mapped files are used to read and write\
+\ndata to disk.\
+\n\
+\nUSAGE:\
+\n    mmap-deflate [OPTIONS] INPUT_FILE OUTPUT_FILE\
+\n\
+\nARGS:\
+\n    <INPUT_FILE>\
+\n            Uncompressed file to read from. The current user must have the\
+\n            correct permissions to read from this file.\
+\n\
+\n    <OUTPUT_FILE>\
+\n            Filename of the compressed file to create. If this file already\
+\n            exists, it is truncated to length 0 before being written to. Should\
+\n            mmap-deflate exit with an error after truncating this file, it will\
+\n            be deletect. The current user must have write permissions in this\
+\n            file's parent directory and, if the file already exists, write\
+\n            permissions on this file.\
+\n\
+\nOPTIONS:\
+\n    -h, --help\
+\n            Prints help information.\
+\n    \
+\n    -l, --level <LEVEL>\
+\n            Compression level to use. An integer in the range [0, 9].\
+\n    \
+\n    -s, --strategy <STRATEGY>\
+\n            Compression strategy to use. One of 'default', 'filtered',\
+\n            'huffman-only', 'rle', or 'fixed', corresponding to the zlib\
+\n            compression strategies.\
+\n\
+\n    -v, --version\
+\n            Prints version information.";
 
 Error parse_arguments(int argc, char *argv[], Arguments *args);
 size_t max_compressed_size(size_t uncompressed_size);
@@ -46,7 +75,13 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.has_help) {
-    printf(USAGE_FORMAT, executable_name);
+    puts(USAGE);
+
+    return EXIT_SUCCESS;
+  }
+
+  if (args.has_version) {
+    puts(VERSION);
 
     return EXIT_SUCCESS;
   }
@@ -128,6 +163,13 @@ cleanup:
     return_code = EXIT_FAILURE;
   }
 
+  if (return_code == EXIT_FAILURE) {
+    if (unlink(args.output_filename) == -1) {
+      print_error(
+          ERRNO_EFORMAT("couldn't remove file '%s'", args.output_filename));
+    }
+  }
+
 cleanup_input_only:
   error = free_file(input_file);
 
@@ -146,6 +188,7 @@ static const struct option OPTIONS[] = {
      .has_arg = optional_argument,
      .flag = NULL,
      .val = 's'},
+    {.name = "version", .has_arg = no_argument, .flag = NULL, .val = 'v'},
     {0}};
 
 Error parse_arguments(int argc, char *argv[], Arguments *args) {
@@ -157,13 +200,14 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
   opterr = false;
 
   bool has_help = false;
+  bool has_version = false;
   int level = Z_DEFAULT_COMPRESSION;
   int strategy = Z_DEFAULT_STRATEGY;
 
   while (true) {
     int option_index;
     const int option_char =
-        getopt_long(argc, argv, "hl::s::", OPTIONS, &option_index);
+        getopt_long(argc, argv, "hl::s::v", OPTIONS, &option_index);
 
     if (option_char == -1) {
       break;
@@ -223,6 +267,10 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
 
       break;
     }
+    case 'v':
+      has_version = true;
+
+      break;
     case '?':
       return eformat("unrecognized option '%s'", argv[optind - 1]);
     default:
@@ -232,7 +280,7 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
 
   const char *input_filename;
   if (optind >= argc) {
-    if (!has_help) {
+    if (!has_help && !has_version) {
       return MAKE_ERROR("missing argument INPUT_FILE");
     } else {
       input_filename = NULL;
@@ -243,7 +291,7 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
 
   const char *output_filename;
   if (optind >= argc - 1) {
-    if (!has_help) {
+    if (!has_help && !has_version) {
       return MAKE_ERROR("missing argument OUTPUT_FILE");
     } else {
       output_filename = NULL;
@@ -256,7 +304,8 @@ Error parse_arguments(int argc, char *argv[], Arguments *args) {
                       .output_filename = output_filename,
                       .has_help = has_help,
                       .level = level,
-                      .strategy = strategy};
+                      .strategy = strategy,
+                      .has_version = has_version};
 
   return NULL_ERROR;
 }
@@ -321,6 +370,8 @@ Error do_compress(z_stream *stream, bool *finished) {
 
 size_t max_compressed_size(size_t uncompressed_size) {
   static const size_t BLOCK_SIZE = 16000;
+  static const size_t BYTES_PER_BLOCK = 5;
+  static const size_t OVERHEAD_PER_STREAM;
 
   size_t num_blocks = uncompressed_size / BLOCK_SIZE; // 16 KB
 
@@ -328,5 +379,5 @@ size_t max_compressed_size(size_t uncompressed_size) {
     ++num_blocks;
   }
 
-  return uncompressed_size + num_blocks * 5 + 6;
+  return uncompressed_size + num_blocks * BYTES_PER_BLOCK + OVERHEAD_PER_STREAM;
 }

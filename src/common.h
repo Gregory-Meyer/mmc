@@ -13,7 +13,6 @@
   ((Error){.what = (MESSAGE), .size = sizeof(MESSAGE), .allocated = false})
 #define ERRNO_EFORMAT(FORMAT, ...)                                             \
   eformat(FORMAT ": %s (%d)", __VA_ARGS__, strerror(errno), errno)
-
 #define NULL_ERROR ((Error){.what = NULL, .size = 0, .allocated = false})
 
 typedef struct Error {
@@ -44,7 +43,7 @@ Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
                             Error (*f)(z_stream *stream, bool *finished),
                             z_stream *stream);
 
-Error eformat(const char *restrict format, ...);
+Error eformat(const char *format, ...);
 int print_error(Error error);
 
 #ifdef __cplusplus

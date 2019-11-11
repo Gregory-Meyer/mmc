@@ -177,7 +177,7 @@ Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
   return NULL_ERROR;
 }
 
-Error eformat(const char *restrict format, ...) {
+Error eformat(const char *format, ...) {
   va_list first_args;
   va_start(first_args, format);
 
