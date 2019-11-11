@@ -48,10 +48,10 @@ const char *const USAGE = "mmap-deflate 0.1.0\
 \n    -h, --help\
 \n            Prints help information.\
 \n    \
-\n    -l, --level <LEVEL>\
+\n    -l, --level=<LEVEL>\
 \n            Compression level to use. An integer in the range [0, 9].\
 \n    \
-\n    -s, --strategy <STRATEGY>\
+\n    -s, --strategy=<STRATEGY>\
 \n            Compression strategy to use. One of 'default', 'filtered',\
 \n            'huffman-only', 'rle', or 'fixed', corresponding to the zlib\
 \n            compression strategies.\
