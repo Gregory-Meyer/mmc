@@ -142,6 +142,11 @@ Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
   size_t input_first_unused_offset = 0;
   size_t output_first_unused_offset = 0;
 
+  // these can fail silently, since they aren't really necessary for our
+  // functionality
+  posix_madvise(input->contents, input->size, POSIX_MADV_SEQUENTIAL);
+  posix_madvise(output->contents, output->size, POSIX_MADV_SEQUENTIAL);
+
   while (true) {
     stream->next_in =
         (z_const Bytef *)input->contents + input_first_unused_offset;
@@ -181,11 +186,16 @@ Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
       return error;
     }
 
+    const size_t previous_length = output_current_length;
     error = expand_output_mapping(output, &output_current_length,
                                   output_first_unused_offset);
 
     if (error.what) {
       return error;
+    }
+
+    if (output_current_length > previous_length) {
+      posix_madvise(output->contents, output->size, POSIX_MADV_SEQUENTIAL);
     }
   }
 
