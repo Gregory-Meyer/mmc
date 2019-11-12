@@ -39,9 +39,9 @@ typedef struct Arguments {
   bool has_version;
 } Arguments;
 
-const char *const VERSION = "mmap-deflate 0.1.0";
+const char *const VERSION = "mmap-deflate 0.1.1";
 
-const char *const USAGE = "mmap-deflate 0.1.0\
+const char *const USAGE = "mmap-deflate 0.1.1\
 \nGregory Meyer <me@gregjm.dev>\
 \n\
 \nmmap-deflate (md) compresses a file using the DEFLATE compression algorithm.\

@@ -37,9 +37,9 @@ typedef struct Arguments {
   bool has_version;
 } Arguments;
 
-const char *const VERSION = "mmap-inflate 0.1.0";
+const char *const VERSION = "mmap-inflate 0.1.1";
 
-const char *const USAGE = "mmap-inflate 0.1.0\
+const char *const USAGE = "mmap-inflate 0.1.1\
 \nGregory Meyer <me@gregjm.dev>\
 \n\
 \nmmap-inflate (mi) uncompresses a file that was compressed by mmap-deflate (md)\
