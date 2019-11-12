@@ -65,7 +65,6 @@ const char *const USAGE = "mmap-inflate 0.1.0\
 \nOPTIONS:\
 \n    -h, --help\
 \n            Prints help information.\
-\n    \
 \n\
 \n    -v, --version\
 \n            Prints version information.";
