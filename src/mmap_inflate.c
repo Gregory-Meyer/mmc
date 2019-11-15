@@ -18,7 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "common.h"
+#include <argparse.h>
+#include <common.h>
 
 #include <assert.h>
 #include <stdbool.h>
@@ -26,55 +27,52 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <getopt.h>
-
 #include <zlib.h>
 
-typedef struct Arguments {
-  const char *input_filename;
-  const char *output_filename;
-  bool has_help;
-  bool has_version;
-} Arguments;
-
-const char *const VERSION = "mmap-inflate 0.1.1";
-
-const char *const USAGE = "mmap-inflate 0.1.1\
-\nGregory Meyer <me@gregjm.dev>\
-\n\
-\nmmap-inflate (mi) uncompresses a file that was compressed by mmap-deflate (md)\
-\nusing the DEFLATE compression algorithm. zlib is used for decompression and\
-\nmemory-mapped files are used to read and write data to disk.\
-\n\
-\nUSAGE:\
-\n    mi [OPTIONS] INPUT_FILE OUTPUT_FILE\
-\n\
-\nARGS:\
-\n    <INPUT_FILE>\
-\n            Compressed file to read from. The current user must have the\
-\n            correct permissions to read from this file.\
-\n\
-\n    <OUTPUT_FILE>\
-\n            Filename of the uncompressed file to create. If this file already\
-\n            exists, it is truncated to length 0 before being written to. Should\
-\n            mmap-deflate exit with an error after truncating this file, it will\
-\n            be deletect. The current user must have write permissions in this\
-\n            file's parent directory and, if the file already exists, write\
-\n            permissions on this file.\
-\n\
-\nOPTIONS:\
-\n    -h, --help\
-\n            Prints help information.\
-\n\
-\n    -v, --version\
-\n            Prints version information.";
-
-Error parse_arguments(int argc, char *argv[], Arguments *args);
 Error do_decompress(z_stream *stream, bool *finished);
 
 int main(int argc, char *argv[]) {
-  Arguments args;
-  Error error = parse_arguments(argc, argv, &args);
+  PassthroughArgumentParser input_filename_parser =
+      make_passthrough_parser("INPUT_FILE");
+  PositionalArgument input_filename = {
+      .name = "INPUT_FILE",
+      .help_text = "Compressed file to read from. The current user must have "
+                   "the correct permissions to read from this file.",
+      .parser = &input_filename_parser.argument_parser};
+
+  PassthroughArgumentParser output_filename_parser =
+      make_passthrough_parser("OUTUPT_FILE");
+  PositionalArgument output_filename = {
+      .name = "OUTPUT_FILE",
+      .help_text =
+          "Filename of the uncompressed file to create. If this file already "
+          "exists, it is truncated to length 0 before being written to. Should "
+          "mmap-deflate exit with an error after truncating this file, it will "
+          "be deletect. The current user must have write permissions in this "
+          "file's parent directory and, if the file already exists, write "
+          "permissions on this file.",
+      .parser = &output_filename_parser.argument_parser};
+
+  PositionalArgument *positional_args[] = {&input_filename, &output_filename};
+
+  Arguments arguments = {
+      .executable_name = "mmap-inflate",
+      .version = "0.1.2",
+      .author = "Gregory Meyer <me@gregjm.dev>",
+      .description =
+          "mmap-inflate (mi) uncompresses a file that was compressed by "
+          "mmap-deflate (md) using the DEFLATE compression algorithm. zlib is "
+          "used for decompression and memory-mapped files are used to read and "
+          "write data to disk.",
+
+      .positional_args = positional_args,
+      .num_positional_args =
+          sizeof(positional_args) / sizeof(positional_args[0]),
+
+      .keyword_args = NULL,
+      .num_keyword_args = 0};
+
+  Error error = parse_arguments(&arguments, argc, argv);
 
   if (error.what) {
     print_error(error);
@@ -82,20 +80,18 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  if (args.has_help) {
-    puts(USAGE);
+  if (arguments.has_help) {
+    print_help(&arguments);
 
     return EXIT_SUCCESS;
-  }
-
-  if (args.has_version) {
-    puts(VERSION);
+  } else if (arguments.has_version) {
+    print_version(&arguments);
 
     return EXIT_SUCCESS;
   }
 
   FileAndMapping input_file;
-  error = open_and_map_file(args.input_filename, &input_file);
+  error = open_and_map_file(input_filename_parser.value, &input_file);
   int return_code = EXIT_SUCCESS;
 
   if (error.what) {
@@ -105,8 +101,8 @@ int main(int argc, char *argv[]) {
   }
 
   FileAndMapping output_file;
-  error =
-      create_and_map_file(args.output_filename, input_file.size, &output_file);
+  error = create_and_map_file(output_filename_parser.value, input_file.size,
+                              &output_file);
 
   if (error.what) {
     print_error(error);
@@ -184,76 +180,6 @@ cleanup_input_only:
   }
 
   return return_code;
-}
-
-static const struct option OPTIONS[] = {
-    {.name = "help", .has_arg = no_argument, .flag = NULL, .val = 'h'}, {0}};
-
-Error parse_arguments(int argc, char *argv[], Arguments *args) {
-  assert(argc >= 1);
-  assert(argv[0]);
-  assert(args);
-
-  executable_name = argv[0];
-  opterr = false;
-
-  bool has_help = false;
-  bool has_version = false;
-
-  while (true) {
-    int option_index;
-    const int option_char =
-        getopt_long(argc, argv, "hv", OPTIONS, &option_index);
-
-    if (option_char == -1) {
-      break;
-    }
-
-    switch (option_char) {
-    case 'h':
-      has_help = true;
-
-      break;
-
-    case 'v':
-      has_version = true;
-
-      break;
-    case '?':
-      return eformat("unrecognized option '%s'", argv[optind - 1]);
-    default:
-      assert(false);
-    }
-  }
-
-  const char *input_filename;
-  if (optind >= argc) {
-    if (!has_help && !has_version) {
-      return MAKE_ERROR("missing argument INPUT_FILE");
-    } else {
-      input_filename = NULL;
-    }
-  } else {
-    input_filename = argv[optind];
-  }
-
-  const char *output_filename;
-  if (optind >= argc - 1) {
-    if (!has_help && !has_version) {
-      return MAKE_ERROR("missing argument OUTPUT_FILE");
-    } else {
-      output_filename = NULL;
-    }
-  } else {
-    output_filename = argv[optind + 1];
-  }
-
-  *args = (Arguments){.input_filename = input_filename,
-                      .output_filename = output_filename,
-                      .has_help = has_help,
-                      .has_version = has_version};
-
-  return NULL_ERROR;
 }
 
 Error do_decompress(z_stream *stream, bool *finished) {
