@@ -315,6 +315,10 @@ Error parse_arguments(Arguments *arguments, int argc, char **argv) {
   ERRNO_EFORMAT("couldn't write help text to file")
 
 static Error print_paragraph(const char *paragraph, size_t indent);
+static Error print_help_info(void);
+static Error print_version_info(void);
+static size_t lower_bound(const KeywordArgument *const *keyword_args,
+                          size_t num_keyword_args, const char *long_name);
 
 Error print_help(const Arguments *arguments) {
   assert(arguments);
@@ -328,26 +332,22 @@ Error print_help(const Arguments *arguments) {
     return UNWRITEABLE_HELP_TEXT();
   }
 
+  Error error;
+
   if (arguments->description) {
     if (putchar('\n') == EOF) {
       return UNWRITEABLE_HELP_TEXT();
     }
 
-    const Error error = print_paragraph(arguments->description, 0);
+    error = print_paragraph(arguments->description, 0);
 
     if (error.what) {
       return error;
     }
   }
 
-  if (printf("\n\nUSAGE:\n    %s", arguments->executable_name) < 0) {
+  if (printf("\n\nUSAGE:\n    %s [OPTIONS]", executable_name) < 0) {
     return UNWRITEABLE_HELP_TEXT();
-  }
-
-  if (arguments->num_keyword_args > 0) {
-    if (fputs(" [OPTIONS]", stdout) == EOF) {
-      return UNWRITEABLE_HELP_TEXT();
-    }
   }
 
   for (size_t i = 0; i < arguments->num_positional_args; ++i) {
@@ -373,7 +373,7 @@ Error print_help(const Arguments *arguments) {
       const char *const maybe_help_text = this_positional_arg->help_text;
 
       if (maybe_help_text) {
-        const Error error = print_paragraph(maybe_help_text, 12);
+        error = print_paragraph(maybe_help_text, 12);
 
         if (error.what) {
           return error;
@@ -388,36 +388,92 @@ Error print_help(const Arguments *arguments) {
     }
   }
 
-  if (arguments->num_keyword_args > 0) {
-    if (fputs("\n\nOPTIONS:", stdout) == EOF) {
-      return UNWRITEABLE_HELP_TEXT();
-    }
+  if (fputs("\n\nOPTIONS:", stdout) == EOF) {
+    return UNWRITEABLE_HELP_TEXT();
+  }
 
-    for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
-      const KeywordArgument *const this_keyword_arg =
-          arguments->keyword_args[i];
-      assert(this_keyword_arg);
+  bool printed_help = false;
+  bool printed_version = false;
 
-      if (printf("\n    -%c, --%s", this_keyword_arg->short_name,
-                 this_keyword_arg->long_name) < 0) {
+  const size_t help_before_index =
+      lower_bound((const KeywordArgument *const *)arguments->keyword_args,
+                  arguments->num_keyword_args, "help");
+  const size_t version_before_index =
+      lower_bound((const KeywordArgument *const *)arguments->keyword_args,
+                  arguments->num_keyword_args, "version");
+
+  for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
+    if (i == help_before_index) {
+      error = print_help_info();
+
+      if (error.what) {
+        return error;
+      }
+
+      if (putchar('\n') == EOF) {
         return UNWRITEABLE_HELP_TEXT();
       }
 
-      const char *const maybe_help_text = this_keyword_arg->help_text;
+      printed_help = true;
+    }
 
-      if (maybe_help_text) {
-        const Error error = print_paragraph(maybe_help_text, 12);
+    if (i == version_before_index) {
+      error = print_version_info();
 
-        if (error.what) {
-          return error;
-        }
+      if (error.what) {
+        return error;
       }
 
-      if (i + 1 < arguments->num_positional_args) {
-        if (putchar('\n') == EOF) {
-          return UNWRITEABLE_HELP_TEXT();
-        }
+      if (putchar('\n') == EOF) {
+        return UNWRITEABLE_HELP_TEXT();
       }
+
+      printed_version = true;
+    }
+
+    const KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+    assert(this_keyword_arg);
+
+    if (printf("\n    -%c, --%s", this_keyword_arg->short_name,
+               this_keyword_arg->long_name) < 0) {
+      return UNWRITEABLE_HELP_TEXT();
+    }
+
+    const char *const maybe_help_text = this_keyword_arg->help_text;
+
+    if (maybe_help_text) {
+      error = print_paragraph(maybe_help_text, 12);
+
+      if (error.what) {
+        return error;
+      }
+    }
+
+    if (i + 1 < arguments->num_positional_args || !printed_help ||
+        !printed_version) {
+      if (putchar('\n') == EOF) {
+        return UNWRITEABLE_HELP_TEXT();
+      }
+    }
+  }
+
+  if (!printed_help) {
+    error = print_help_info();
+
+    if (error.what) {
+      return error;
+    }
+
+    if (putchar('\n') == EOF) {
+      return UNWRITEABLE_HELP_TEXT();
+    }
+  }
+
+  if (!printed_version) {
+    error = print_version_info();
+
+    if (error.what) {
+      return error;
     }
   }
 
@@ -505,6 +561,47 @@ static Error print_paragraph(const char *paragraph, size_t indent) {
         return UNWRITEABLE_HELP_TEXT();
       }
     }
+  }
+
+  return NULL_ERROR;
+}
+
+static size_t lower_bound(const KeywordArgument *const *keyword_args,
+                          size_t num_keyword_args, const char *long_name) {
+  if (num_keyword_args == 0) {
+    return 0;
+  }
+
+  size_t left = 0;
+  size_t right = num_keyword_args;
+
+  while (left < right) {
+    const size_t middle = (left + right) / 2;
+    assert(middle < num_keyword_args);
+
+    const int comparison = strcmp(keyword_args[middle]->long_name, long_name);
+
+    if (comparison < 0) {
+      left = middle + 1;
+    } else {
+      right = middle;
+    }
+  }
+
+  return left;
+}
+
+static Error print_help_info(void) {
+  if (printf("\n    -h, --help\n            Prints help information.") < 0) {
+    return UNWRITEABLE_HELP_TEXT();
+  }
+
+  return NULL_ERROR;
+}
+static Error print_version_info(void) {
+  if (printf("\n    -v, --version\n            Prints version information.") <
+      0) {
+    return UNWRITEABLE_HELP_TEXT();
   }
 
   return NULL_ERROR;
