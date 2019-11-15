@@ -34,8 +34,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define ERROR_OUT_OF_MEMORY "out of memory"
-
 #define MIN(X, Y) (((Y) < (X)) ? (Y) : (X))
 
 const char *executable_name;
@@ -226,9 +224,7 @@ Error eformat(const char *format, ...) {
   if (!error.what) {
     va_end(second_args);
 
-    return (Error){.what = ERROR_OUT_OF_MEMORY,
-                   .size = sizeof(ERROR_OUT_OF_MEMORY),
-                   .allocated = false};
+    return ERROR_OUT_OF_MEMORY;
   }
 
   const int result = vsnprintf(error.what, error.size, format, second_args);

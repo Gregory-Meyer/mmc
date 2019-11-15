@@ -29,10 +29,15 @@
 
 #include <zlib.h>
 
+#define DO_STRINGIFY(X) #X
+#define STRINGIFY(X) DO_STRINGIFY(X)
+
 #define MAKE_ERROR(MESSAGE)                                                    \
   ((Error){.what = (MESSAGE), .size = sizeof(MESSAGE), .allocated = false})
-#define ERRNO_EFORMAT(FORMAT, ...)                                             \
-  eformat(FORMAT ": %s (%d)", __VA_ARGS__, strerror(errno), errno)
+#define DO_ERRNO_EFORMAT(FORMAT, ...)                                          \
+  eformat(FORMAT "%s: %s (%d)", __VA_ARGS__, strerror(errno), errno)
+#define ERRNO_EFORMAT(...) DO_ERRNO_EFORMAT(__VA_ARGS__, "")
+#define ERROR_OUT_OF_MEMORY MAKE_ERROR("out of memory")
 #define NULL_ERROR ((Error){.what = NULL, .size = 0, .allocated = false})
 
 typedef struct Error {
