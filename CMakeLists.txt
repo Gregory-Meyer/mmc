@@ -58,7 +58,15 @@ if(LZ4_FOUND)
         C_EXTENSIONS OFF
     )
 
-    install(TARGETS mlc DESTINATION bin)
+    add_executable(mld src/lz4_decompress.c)
+    target_compile_features(mld PRIVATE c_std_99)
+    target_link_libraries(mld PRIVATE common LZ4::LZ4)
+    set_target_properties(mld PROPERTIES
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+    )
+
+    install(TARGETS mlc mld DESTINATION bin)
 endif()
 
 add_library(common src/argparse.c src/common.c)
