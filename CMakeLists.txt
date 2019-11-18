@@ -18,6 +18,8 @@ else()
     find_package(LZ4 1.8.3)
 endif()
 
+add_compile_definitions(_GNU_SOURCE)
+
 if(ZLIB_FOUND)
     add_executable(md src/deflate.c)
     target_compile_features(md PRIVATE c_std_99)
