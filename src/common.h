@@ -27,8 +27,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <zlib.h>
-
 #define DO_STRINGIFY(X) #X
 #define STRINGIFY(X) DO_STRINGIFY(X)
 
@@ -63,10 +61,6 @@ Error open_and_map_file(const char *filename, FileAndMapping *file);
 Error create_and_map_file(const char *filename, size_t length,
                           FileAndMapping *file);
 Error free_file(FileAndMapping file);
-
-Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
-                            Error (*f)(z_stream *stream, bool *finished),
-                            z_stream *stream);
 
 Error eformat(const char *format, ...);
 int print_error(Error error);
