@@ -30,16 +30,21 @@
 #define NUM_NODE_CHILDREN 63
 
 typedef struct TrieNode {
-  struct TrieNode *children[NUM_NODE_CHILDREN];
+  size_t child_offsets[NUM_NODE_CHILDREN];
   KeywordArgument *value;
 } TrieNode;
+
+typedef struct TrieArena {
+  TrieNode *root;
+  size_t size;
+  size_t capacity;
+} TrieArena;
 
 static size_t char_to_index(char ch);
 static KeywordArgument *find(const TrieNode *node, const char *key,
                              const char **maybe_value);
-static TrieNode *insert_unique(TrieNode *node, const char *key,
-                               KeywordArgument *value);
-static void deallocate_children(TrieNode *node);
+static size_t insert_unique(TrieArena *arena, size_t node_offset,
+                            const char *key, KeywordArgument *value);
 
 static Error do_parse_integer(ArgumentParser *self_base,
                               const char *maybe_value_str);
@@ -229,17 +234,31 @@ Error parse_arguments(Arguments *arguments, int argc,
     }
   }
 
-  TrieNode root = {.children = {NULL}, .value = NULL};
+  TrieArena arena;
   Error error = NULL_ERROR;
 
-  for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
-    KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+  if (arguments->num_keyword_args > 0) {
+    arena = (TrieArena){
+        .root = malloc(sizeof(TrieNode) * 8), .size = 1, .capacity = 8};
 
-    if (!insert_unique(&root, this_keyword_arg->long_name, this_keyword_arg)) {
-      error = ERROR_OUT_OF_MEMORY;
-
-      goto cleanup;
+    if (!arena.root) {
+      return ERROR_OUT_OF_MEMORY;
     }
+
+    arena.root[0] = (TrieNode){.child_offsets = {0}, .value = NULL};
+
+    for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
+      KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+
+      if (insert_unique(&arena, 0, this_keyword_arg->long_name,
+                        this_keyword_arg) == SIZE_MAX) {
+        error = ERROR_OUT_OF_MEMORY;
+
+        goto cleanup;
+      }
+    }
+  } else {
+    arena = (TrieArena){.root = NULL, .size = 0, .capacity = 0};
   }
 
   size_t positional_arg_index = 0;
@@ -274,13 +293,18 @@ Error parse_arguments(Arguments *arguments, int argc,
     }
 
     if (this_argument[1] == '-') {
-      // long argument
+      // long option
+      if (arguments->num_keyword_args == 0) {
+        // no cleanup to do
+        return eformat("unrecognized option --%s", this_argument + 2);
+      }
+
       const char *maybe_value;
       KeywordArgument *const this_keyword_arg =
-          find(&root, this_argument + 2, &maybe_value);
+          find(arena.root, this_argument + 2, &maybe_value);
 
       if (!this_keyword_arg) {
-        error = eformat("unrecognized option %s", this_argument);
+        error = eformat("unrecognized option --%s", this_argument + 2);
 
         goto cleanup;
       }
@@ -309,7 +333,12 @@ Error parse_arguments(Arguments *arguments, int argc,
         goto cleanup;
       }
     } else {
-      // short argument(s)
+      // short option(s)
+      if (arguments->num_keyword_args == 0) {
+        // no cleanup to do
+        return eformat("unrecognized option -%c", this_argument[1]);
+      }
+
       for (const char *ch = this_argument + 1; *ch != '\0'; ++ch) {
         const size_t index = char_to_index(*ch);
 
@@ -407,7 +436,7 @@ Error parse_arguments(Arguments *arguments, int argc,
   }
 
 cleanup:
-  deallocate_children(&root);
+  free(arena.root);
 
   return error;
 }
@@ -744,26 +773,32 @@ static KeywordArgument *find(const TrieNode *node, const char *key,
     }
   }
 
-  const TrieNode *const maybe_child = node->children[index];
+  const size_t child_offset = node->child_offsets[index];
 
-  if (!maybe_child) {
+  if (child_offset == 0) {
     return NULL;
   }
 
-  return find(maybe_child, key + 1, maybe_value);
+  return find(node + child_offset, key + 1, maybe_value);
 }
 
-static TrieNode *insert_unique(TrieNode *node, const char *key,
-                               KeywordArgument *value) {
-  assert(node);
+static size_t insert_unique(TrieArena *arena, size_t node_offset,
+                            const char *key, KeywordArgument *value) {
+  assert(arena);
+
+  assert(arena->root);
+  assert(arena->size > node_offset);
+
+  assert(key);
   assert(value);
 
+  TrieNode *this_node = &arena->root[node_offset];
+
   if (*key == '\0') {
-    assert(!node->value);
+    assert(!this_node->value);
+    this_node->value = value;
 
-    node->value = value;
-
-    return node;
+    return node_offset;
   }
 
   size_t index = char_to_index(*key);
@@ -773,31 +808,36 @@ static TrieNode *insert_unique(TrieNode *node, const char *key,
     index = NUM_NODE_CHILDREN - 1;
   }
 
-  TrieNode **const maybe_child_ptr = &node->children[index];
+  size_t *maybe_child_offset = &this_node->child_offsets[index];
 
-  if (!*maybe_child_ptr) {
-    TrieNode *const new_child = malloc(sizeof(TrieNode));
+  if (*maybe_child_offset == 0) {
+    if (arena->size == arena->capacity) {
+      const size_t new_capacity = arena->capacity * 2;
+      TrieNode *const new_root =
+          realloc(arena->root, new_capacity * sizeof(TrieNode));
 
-    if (!new_child) {
-      return NULL;
+      if (!new_root) {
+        return SIZE_MAX;
+      }
+
+      arena->root = new_root;
+      arena->capacity = new_capacity;
+
+      this_node = &arena->root[node_offset];
+      maybe_child_offset = &this_node->child_offsets[index];
     }
 
-    *new_child = (TrieNode){.children = {NULL}, .value = NULL};
-    *maybe_child_ptr = new_child;
+    const size_t new_child_offset = arena->size;
+    ++arena->size;
+
+    TrieNode *const new_child = arena->root + new_child_offset;
+    *new_child = (TrieNode){.child_offsets = {0}, .value = NULL};
+
+    *maybe_child_offset = new_child_offset - node_offset;
   }
 
-  return insert_unique(*maybe_child_ptr, key + 1, value);
-}
-
-static void deallocate_children(TrieNode *node) {
-  assert(node);
-
-  for (size_t i = 0; i < NUM_NODE_CHILDREN; ++i) {
-    if (node->children[i]) {
-      deallocate_children(node->children[i]);
-      free(node->children[i]);
-    }
-  }
+  return insert_unique(arena, node_offset + *maybe_child_offset, key + 1,
+                       value);
 }
 
 static Error do_parse_integer(ArgumentParser *self_base,
