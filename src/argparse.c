@@ -111,26 +111,57 @@ static int keyword_argument_short_name_strcmp(const void *lhs_v,
 
 Error parse_arguments(Arguments *arguments, int argc,
                       const char *const argv[]) {
+#ifndef NDEBUG
   assert(arguments);
+
+  assert(arguments->executable_name);
+  assert(arguments->version);
+  assert(arguments->author);
+
   assert(argc > 0);
   assert(argv);
 
-  assert(argv[0]);
+  // check for NULL argv elements
+  for (size_t i = 0; i < (size_t)argc; ++i) {
+    assert(argv[i]);
+  }
 
-  executable_name = argv[0];
-
-#ifndef NDEBUG
-  // check for reserved long and short names
+  // check for keyword argument programmer errors
   for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
     const KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
     assert(this_keyword_arg);
-    assert(this_keyword_arg->long_name);
 
     assert(this_keyword_arg->short_name != 'h');
     assert(this_keyword_arg->short_name != 'v');
+    assert(char_to_index(this_keyword_arg->short_name) != SIZE_MAX);
 
+    assert(this_keyword_arg->long_name);
     assert(strcmp(this_keyword_arg->long_name, "help") != 0);
     assert(strcmp(this_keyword_arg->long_name, "version") != 0);
+
+    for (const char *ch = this_keyword_arg->long_name; *ch != '\0'; ++ch) {
+      assert(char_to_index(*ch) != SIZE_MAX || *ch == '-');
+    }
+
+    if (this_keyword_arg->parser) {
+      assert(this_keyword_arg->parser->parser);
+      assert(this_keyword_arg->parser->name);
+      assert(this_keyword_arg->parser->metavariable);
+    }
+  }
+
+  // check for positional argument programmer errors
+  for (size_t i = 0; i < arguments->num_positional_args; ++i) {
+    const PositionalArgument *const this_positional_arg =
+        arguments->positional_args[i];
+
+    assert(this_positional_arg);
+
+    assert(this_positional_arg->name);
+
+    assert(this_positional_arg->parser);
+    assert(this_positional_arg->parser->parser);
+    assert(this_positional_arg->parser->name);
   }
 
   // check for duplicate short names
@@ -147,6 +178,7 @@ Error parse_arguments(Arguments *arguments, int argc,
   }
 #endif
 
+  executable_name = argv[0];
   qsort(arguments->keyword_args, arguments->num_keyword_args,
         sizeof(KeywordArgument *), keyword_argument_long_name_strcmp);
 
@@ -168,7 +200,6 @@ Error parse_arguments(Arguments *arguments, int argc,
   for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
     KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
     const size_t index = char_to_index(this_keyword_arg->short_name);
-    assert(index != SIZE_MAX);
 
     short_option_mapping[index] = this_keyword_arg;
   }
@@ -179,7 +210,6 @@ Error parse_arguments(Arguments *arguments, int argc,
 
   for (size_t i = 1; i < (size_t)argc; ++i) {
     const char *const this_argument = argv[i];
-    assert(this_argument);
 
     if (strcmp(this_argument, "--") == 0) {
       last_index = i;
@@ -279,9 +309,6 @@ Error parse_arguments(Arguments *arguments, int argc,
           arguments->positional_args[positional_arg_index];
       ++positional_arg_index;
 
-      assert(this_positional_arg);
-      assert(this_positional_arg->parser);
-
       error = this_positional_arg->parser->parser(this_positional_arg->parser,
                                                   this_argument);
 
@@ -309,9 +336,8 @@ Error parse_arguments(Arguments *arguments, int argc,
         goto cleanup;
       }
 
-      // either --key=value
-      // or --key value
       if (!maybe_value) {
+        // --key value
         if (i + 1 >= last_index) {
           error = eformat("missing required argument %s for option -%c, --%s",
                           this_keyword_arg->parser->metavariable,
@@ -322,9 +348,8 @@ Error parse_arguments(Arguments *arguments, int argc,
         }
 
         maybe_value = argv[i + 1];
-        assert(maybe_value);
         ++i;
-      }
+      } // otherwise, --key=value
 
       error = this_keyword_arg->parser->parser(this_keyword_arg->parser,
                                                maybe_value);
@@ -366,6 +391,7 @@ Error parse_arguments(Arguments *arguments, int argc,
         bool contains_value;
 
         if (*(ch + 1) == '\0') {
+          // -k value
           if (i + 1 >= last_index) {
             error = eformat("missing required argument %s for option -%c, --%s",
                             this_keyword_arg->parser->metavariable,
@@ -381,9 +407,11 @@ Error parse_arguments(Arguments *arguments, int argc,
 
           contains_value = false;
         } else if (*(ch + 1) == '=') {
+          // -k=value
           maybe_value = ch + 2;
           contains_value = true;
         } else {
+          // -kvalue
           maybe_value = ch + 1;
           contains_value = true;
         }
