@@ -2,11 +2,20 @@ cmake_minimum_required(VERSION 3.11)
 
 project(MmapDEFLATE VERSION 0.1.2 LANGUAGES C)
 
+list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
+
 option(ENABLE_ZLIB "Build frontends for zlib, mmap-deflate (md) and mmap-inflate (mi)." OFF)
 if(ENABLE_ZLIB)
     find_package(ZLIB 1.2 REQUIRED)
 else()
     find_package(ZLIB 1.2)
+endif()
+
+option(ENABLE_LZ4 "Build frontends for LZ4, mmap-lz4-compress (mlc) and mmap-lz4-decompress (mld)." OFF)
+if(ENABLE_LZ4)
+    find_package(LZ4 1.8.3 REQUIRED)
+else()
+    find_package(LZ4 1.8.3)
 endif()
 
 if(ZLIB_FOUND)
@@ -36,6 +45,18 @@ if(ZLIB_FOUND)
     )
 
     install(TARGETS md mi DESTINATION bin)
+endif()
+
+if(LZ4_FOUND)
+    add_executable(mlc src/lz4_compress.c)
+    target_compile_features(mlc PRIVATE c_std_99)
+    target_link_libraries(mlc PRIVATE common LZ4::LZ4)
+    set_target_properties(mlc PROPERTIES
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+    )
+
+    install(TARGETS mlc DESTINATION bin)
 endif()
 
 add_library(common src/argparse.c src/common.c)
