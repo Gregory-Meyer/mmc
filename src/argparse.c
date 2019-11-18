@@ -289,7 +289,8 @@ Error parse_arguments(Arguments *arguments, int argc,
       // or --key value
       if (!maybe_value) {
         if (i + 1 >= last_index) {
-          error = eformat("missing required argument for option -%c, --%s",
+          error = eformat("missing required argument %s for option -%c, --%s",
+                          this_keyword_arg->parser->metavariable,
                           this_keyword_arg->short_name,
                           this_keyword_arg->long_name);
 
@@ -337,7 +338,8 @@ Error parse_arguments(Arguments *arguments, int argc,
 
         if (*(ch + 1) == '\0') {
           if (i + 1 >= last_index) {
-            error = eformat("missing required argument for option -%c, --%s",
+            error = eformat("missing required argument %s for option -%c, --%s",
+                            this_keyword_arg->parser->metavariable,
                             this_keyword_arg->short_name,
                             this_keyword_arg->long_name);
 
