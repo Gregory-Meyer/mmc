@@ -207,7 +207,7 @@ cleanup:
     return_code = EXIT_FAILURE;
   }
 
-  if (return_code == EXIT_FAILURE) {
+  if (return_code != EXIT_SUCCESS) {
     if (unlink(output_filename_parser.value) == -1) {
       print_error(ERRNO_EFORMAT("couldn't remove file '%s'",
                                 output_filename_parser.value));
