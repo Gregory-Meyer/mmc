@@ -25,6 +25,7 @@
 #include <limits.h>
 #include <stdlib.h>
 
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -188,6 +189,9 @@ int main(int argc, const char *const argv[]) {
 
     goto cleanup_input_only;
   }
+
+  posix_madvise(input_file.contents, input_file.size, POSIX_MADV_SEQUENTIAL);
+  posix_madvise(output_file.contents, output_file.size, POSIX_MADV_SEQUENTIAL);
 
   const size_t output_final_size_or_error =
       LZ4F_compressFrame(output_file.contents, output_file.size,
