@@ -4,7 +4,7 @@ project(MmapDEFLATE VERSION 0.1.2 LANGUAGES C)
 
 find_package(ZLIB 1.2 REQUIRED)
 
-add_executable(md src/mmap_deflate.c)
+add_executable(md src/deflate.c)
 target_compile_features(md PRIVATE c_std_99)
 target_link_libraries(md PRIVATE common zlib_common ZLIB::ZLIB)
 set_target_properties(md PROPERTIES
@@ -12,7 +12,7 @@ set_target_properties(md PROPERTIES
     C_EXTENSIONS OFF
 )
 
-add_executable(mi src/mmap_inflate.c)
+add_executable(mi src/inflate.c)
 target_compile_features(mi PRIVATE c_std_99)
 target_link_libraries(mi PRIVATE common zlib_common ZLIB::ZLIB)
 set_target_properties(mi PROPERTIES

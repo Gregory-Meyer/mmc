@@ -20,6 +20,7 @@
 
 #include <argparse.h>
 #include <common.h>
+#include <zlib_common.h>
 
 #include <assert.h>
 #include <stdbool.h>
@@ -29,15 +30,14 @@
 
 #include <zlib.h>
 
-size_t max_compressed_size(size_t uncompressed_size);
-Error do_compress(z_stream *stream, bool *finished);
+Error do_decompress(z_stream *stream, bool *finished);
 
-int main(int argc, char *argv[]) {
+int main(int argc, const char *const argv[]) {
   PassthroughArgumentParser input_filename_parser =
       make_passthrough_parser("INPUT_FILE");
   PositionalArgument input_filename = {
       .name = "INPUT_FILE",
-      .help_text = "Uncompressed file to read from. The current user must have "
+      .help_text = "Compressed file to read from. The current user must have "
                    "the correct permissions to read from this file.",
       .parser = &input_filename_parser.argument_parser};
 
@@ -46,58 +46,32 @@ int main(int argc, char *argv[]) {
   PositionalArgument output_filename = {
       .name = "OUTPUT_FILE",
       .help_text =
-          "Filename of the compressed file to create. If this file already "
+          "Filename of the uncompressed file to create. If this file already "
           "exists, it is truncated to length 0 before being written to. Should "
           "mmap-deflate exit with an error after truncating this file, it will "
-          "be deleted. The current user must have write permissions in this "
+          "be deletect. The current user must have write permissions in this "
           "file's parent directory and, if the file already exists, write "
           "permissions on this file.",
       .parser = &output_filename_parser.argument_parser};
 
   PositionalArgument *positional_args[] = {&input_filename, &output_filename};
 
-  IntegerArgumentParser level_parser =
-      make_integer_parser("-l, --level", Z_NO_COMPRESSION, Z_BEST_COMPRESSION);
-  KeywordArgument level = {
-      .short_name = 'l',
-      .long_name = "level",
-      .help_text =
-          "Compression level to use. An integer in the range [" STRINGIFY(
-              Z_NO_COMPRESSION) ", " STRINGIFY(Z_BEST_COMPRESSION) "].",
-      .parser = &level_parser.argument_parser};
-
-  const char *strategy_values[] = {"default", "filtered", "huffman-only", "rle",
-                                   "fixed"};
-  const int strategy_mapping[] = {Z_DEFAULT_STRATEGY, Z_FILTERED,
-                                  Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED};
-  StringArgumentParser strategy_parser =
-      make_string_parser("-s, --strategy", strategy_values,
-                         sizeof(strategy_values) / sizeof(strategy_values[0]));
-  KeywordArgument strategy = {
-      .short_name = 's',
-      .long_name = "strategy",
-      .help_text = "Compression strategy to use. One of 'default', 'filtered', "
-                   "'huffman-only', 'rle', or 'fixed', corresponding to the "
-                   "zlib compression strategies.",
-      .parser = &strategy_parser.argument_parser};
-
-  KeywordArgument *keyword_args[] = {&strategy, &level};
-
   Arguments arguments = {
-      .executable_name = "mmap-deflate",
+      .executable_name = "mmap-inflate",
       .version = "0.1.2",
       .author = "Gregory Meyer <me@gregjm.dev>",
       .description =
-          "mmap-deflate (md) compresses a file using the DEFLATE compression "
-          "algorithm. zlib is used for compression and memory-mapped files are "
-          "used to read and write data to disk.",
+          "mmap-inflate (mi) uncompresses a file that was compressed by "
+          "mmap-deflate (md) using the DEFLATE compression algorithm. zlib is "
+          "used for decompression and memory-mapped files are used to read and "
+          "write data to disk.",
 
       .positional_args = positional_args,
       .num_positional_args =
           sizeof(positional_args) / sizeof(positional_args[0]),
 
-      .keyword_args = keyword_args,
-      .num_keyword_args = sizeof(keyword_args) / sizeof(keyword_args[0])};
+      .keyword_args = NULL,
+      .num_keyword_args = 0};
 
   Error error = parse_arguments(&arguments, argc, argv);
 
@@ -117,16 +91,6 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
   }
 
-  int strategy_value = Z_DEFAULT_STRATEGY;
-  if (strategy.was_found) {
-    strategy_value = strategy_mapping[strategy_parser.value_index];
-  }
-
-  int level_value = Z_DEFAULT_COMPRESSION;
-  if (level.was_found) {
-    level_value = (int)level_parser.value;
-  }
-
   FileAndMapping input_file;
   error = open_and_map_file(input_filename_parser.value, &input_file);
   int return_code = EXIT_SUCCESS;
@@ -138,9 +102,8 @@ int main(int argc, char *argv[]) {
   }
 
   FileAndMapping output_file;
-  error =
-      create_and_map_file(output_filename_parser.value,
-                          max_compressed_size(input_file.size), &output_file);
+  error = create_and_map_file(output_filename_parser.value, input_file.size,
+                              &output_file);
 
   if (error.what) {
     print_error(error);
@@ -149,10 +112,13 @@ int main(int argc, char *argv[]) {
     goto cleanup_input_only;
   }
 
-  z_stream stream = {.zalloc = Z_NULL, .zfree = Z_NULL, .opaque = Z_NULL};
+  z_stream stream = {.next_in = NULL,
+                     .avail_in = 0,
+                     .zalloc = Z_NULL,
+                     .zfree = Z_NULL,
+                     .opaque = Z_NULL};
 
-  const int init_errc =
-      deflateInit2(&stream, level_value, Z_DEFLATED, 15, 8, strategy_value);
+  const int init_errc = inflateInit(&stream);
 
   if (init_errc != Z_OK) {
     assert(init_errc != Z_STREAM_ERROR);
@@ -175,10 +141,10 @@ int main(int argc, char *argv[]) {
     }
 
     if (stream.msg) {
-      error = eformat("couldn't initialize deflate stream: %s (%d): %s", what,
+      error = eformat("couldn't initialize inflate stream: %s (%d): %s", what,
                       init_errc, stream.msg);
     } else {
-      error = eformat("couldn't initialize deflate stream: %s (%d)", what,
+      error = eformat("couldn't initialize inflate stream: %s (%d)", what,
                       init_errc);
     }
 
@@ -188,15 +154,15 @@ int main(int argc, char *argv[]) {
   }
 
   error =
-      transform_mapped_file(&input_file, &output_file, do_compress, &stream);
+      transform_mapped_file(&input_file, &output_file, do_decompress, &stream);
 
   if (error.what) {
     print_error(error);
     return_code = EXIT_FAILURE;
   }
 
-  const int deflate_end_errc = deflateEnd(&stream);
-  assert(deflate_end_errc == Z_OK);
+  const int inflate_end_errc = inflateEnd(&stream);
+  assert(inflate_end_errc == Z_OK);
 
 cleanup:
   error = free_file(output_file);
@@ -204,13 +170,6 @@ cleanup:
   if (error.what) {
     print_error(error);
     return_code = EXIT_FAILURE;
-  }
-
-  if (return_code == EXIT_FAILURE) {
-    if (unlink(output_filename_parser.value) == -1) {
-      print_error(ERRNO_EFORMAT("couldn't remove file '%s'",
-                                output_filename_parser.value));
-    }
   }
 
 cleanup_input_only:
@@ -224,20 +183,25 @@ cleanup_input_only:
   return return_code;
 }
 
-Error do_compress(z_stream *stream, bool *finished) {
+Error do_decompress(z_stream *stream, bool *finished) {
   assert(stream);
   assert(finished);
 
+  if (stream->avail_in == 0) {
+    *finished = true;
+
+    return NULL_ERROR;
+  }
+
   int flag;
 
-  if ((size_t)stream->avail_out >=
-      max_compressed_size((size_t)stream->avail_in)) {
+  if ((size_t)stream->avail_out / 1032 > (size_t)stream->avail_in) {
     flag = Z_FINISH;
   } else {
     flag = Z_NO_FLUSH;
   }
 
-  const int errc = deflate(stream, flag);
+  const int errc = inflate(stream, flag);
 
   if (errc != Z_OK) {
     assert(errc != Z_STREAM_ERROR);
@@ -280,18 +244,4 @@ Error do_compress(z_stream *stream, bool *finished) {
   *finished = false;
 
   return NULL_ERROR;
-}
-
-size_t max_compressed_size(size_t uncompressed_size) {
-  static const size_t BLOCK_SIZE = 16000;
-  static const size_t BYTES_PER_BLOCK = 5;
-  static const size_t OVERHEAD_PER_STREAM;
-
-  size_t num_blocks = uncompressed_size / BLOCK_SIZE; // 16 KB
-
-  if (uncompressed_size % BLOCK_SIZE == 0) {
-    ++num_blocks;
-  }
-
-  return uncompressed_size + num_blocks * BYTES_PER_BLOCK + OVERHEAD_PER_STREAM;
 }
