@@ -20,13 +20,26 @@
 
 #include "argparse.h"
 
-#define _GNU_SOURCE
 #include <assert.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <getopt.h>
+// [A-Za-z0-9\-]
+#define NUM_NODE_CHILDREN 63
+
+typedef struct TrieNode {
+  struct TrieNode *children[NUM_NODE_CHILDREN];
+  KeywordArgument *value;
+} TrieNode;
+
+static size_t char_to_index(char ch);
+static KeywordArgument *find(const TrieNode *node, const char *key,
+                             const char **maybe_value);
+static TrieNode *insert_unique(TrieNode *node, const char *key,
+                               KeywordArgument *value);
+static void deallocate_children(TrieNode *node);
 
 static Error do_parse_integer(ArgumentParser *self_base,
                               const char *maybe_value_str);
@@ -34,6 +47,18 @@ static Error do_parse_string(ArgumentParser *self_base,
                              const char *maybe_value_str);
 static Error do_parse_passthrough(ArgumentParser *self_base,
                                   const char *maybe_value_str);
+
+static size_t char_to_index(char ch) {
+  if (ch >= 'a' && ch <= 'z') {
+    return (size_t)(ch - 'a');
+  } else if (ch >= 'A' && ch <= 'Z') {
+    return (size_t)(ch - 'A') + 26;
+  } else if (ch >= '0' && ch <= '9') {
+    return (size_t)(ch - '0') + 52;
+  } else {
+    return SIZE_MAX;
+  }
+}
 
 IntegerArgumentParser make_integer_parser(const char *name, long long min_value,
                                           long long max_value) {
@@ -69,7 +94,8 @@ static int keyword_argument_long_name_strcmp(const void *lhs_v,
 static int keyword_argument_short_name_strcmp(const void *lhs_v,
                                               const void *rhs_v);
 
-Error parse_arguments(Arguments *arguments, int argc, char **argv) {
+Error parse_arguments(Arguments *arguments, int argc,
+                      const char *const argv[]) {
   assert(arguments);
   assert(argc > 0);
   assert(argv);
@@ -78,24 +104,18 @@ Error parse_arguments(Arguments *arguments, int argc, char **argv) {
 
   executable_name = argv[0];
 
+#ifndef NDEBUG
   // check for reserved long and short names
   for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
     const KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
     assert(this_keyword_arg);
+    assert(this_keyword_arg->long_name);
 
-    if (this_keyword_arg->short_name == 'h') {
-      return eformat("option -%c, --%s has reserved short name -h",
-                     this_keyword_arg->short_name, this_keyword_arg->long_name);
-    } else if (this_keyword_arg->short_name == 'v') {
-      return eformat("option -%c, --%s has reserved short name -v",
-                     this_keyword_arg->short_name, this_keyword_arg->long_name);
-    } else if (strcmp(this_keyword_arg->long_name, "help") == 0) {
-      return eformat("option -%c, --%s has reserved long name --help",
-                     this_keyword_arg->short_name, this_keyword_arg->long_name);
-    } else if (strcmp(this_keyword_arg->long_name, "version") == 0) {
-      return eformat("option -%c, --%s has reserved long name --version",
-                     this_keyword_arg->short_name, this_keyword_arg->long_name);
-    }
+    assert(this_keyword_arg->short_name != 'h');
+    assert(this_keyword_arg->short_name != 'v');
+
+    assert(strcmp(this_keyword_arg->long_name, "help") != 0);
+    assert(strcmp(this_keyword_arg->long_name, "version") != 0);
   }
 
   // check for duplicate short names
@@ -108,207 +128,273 @@ Error parse_arguments(Arguments *arguments, int argc, char **argv) {
     const KeywordArgument *const second_keyword_arg =
         arguments->keyword_args[i];
 
-    if (first_keyword_arg->short_name == second_keyword_arg->short_name) {
-      const char *const first_long_name = first_keyword_arg->long_name;
-      const char *const second_long_name = second_keyword_arg->long_name;
-      const char duplicate_short_name = first_keyword_arg->short_name;
-
-      return eformat(
-          "arguments -%c, --%s and -%c, --%s have the same short name",
-          duplicate_short_name, first_long_name, duplicate_short_name,
-          second_long_name);
-    }
+    assert(first_keyword_arg->short_name != second_keyword_arg->short_name);
   }
+#endif
 
-  // check for duplicate long names
   qsort(arguments->keyword_args, arguments->num_keyword_args,
         sizeof(KeywordArgument *), keyword_argument_long_name_strcmp);
 
+#ifndef NDEBUG
+  // check for duplicate long names
   for (size_t i = 1; i < arguments->num_keyword_args; ++i) {
     const KeywordArgument *const first_keyword_arg =
         arguments->keyword_args[i - 1];
     const KeywordArgument *const second_keyword_arg =
         arguments->keyword_args[i];
 
-    if (strcmp(first_keyword_arg->long_name, second_keyword_arg->long_name) ==
-        0) {
-      const char *const duplicate_long_name = first_keyword_arg->long_name;
-      const char first_short_name = first_keyword_arg->short_name;
-      const char second_short_name = second_keyword_arg->short_name;
-
-      return eformat(
-          "arguments -%c, --%s and -%c, --%s have the same long name",
-          first_short_name, duplicate_long_name, second_short_name,
-          duplicate_long_name);
-    }
+    assert(strcmp(first_keyword_arg->long_name,
+                  second_keyword_arg->long_name) != 0);
   }
+#endif
 
-  struct option *options =
-      malloc(sizeof(struct option) * (arguments->num_keyword_args + 2));
-
-  if (!options) {
-    return ERROR_OUT_OF_MEMORY;
-  }
-
-  options[0] = (struct option){
-      .name = "help", .has_arg = no_argument, .flag = NULL, .val = 'h'};
-  options[1] = (struct option){
-      .name = "version", .has_arg = no_argument, .flag = NULL, .val = 'v'};
-
-  size_t num_required_value_keyword_arguments = 0;
-  size_t num_no_value_keyword_arguments = 0;
+  KeywordArgument *short_option_mapping[NUM_NODE_CHILDREN - 1] = {NULL};
 
   for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
-    const KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+    KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+    const size_t index = char_to_index(this_keyword_arg->short_name);
+    assert(index != SIZE_MAX);
 
-    int has_arg;
+    short_option_mapping[index] = this_keyword_arg;
+  }
 
-    if (this_keyword_arg->parser) {
-      ++num_required_value_keyword_arguments;
-      has_arg = optional_argument;
+  size_t last_index = (size_t)argc;
+
+  for (size_t i = 1; i < (size_t)argc; ++i) {
+    const char *const this_argument = argv[i];
+    assert(this_argument);
+
+    if (strcmp(argv[i], "--") == 0) {
+      last_index = i;
+
+      break;
+    } else if (argv[i][0] != '-') {
+      continue;
+    }
+
+    if (argv[i][1] == '-') {
+      // long option
+      if (strcmp(argv[i] + 2, "help") == 0) {
+        arguments->has_help = true;
+
+        return NULL_ERROR;
+      } else if (strcmp(argv[i] + 2, "version") == 0) {
+        arguments->has_version = true;
+
+        return NULL_ERROR;
+      }
     } else {
-      ++num_no_value_keyword_arguments;
-      has_arg = no_argument;
+      // short option(s)
+
+      for (const char *ch = argv[i] + 1; *ch != '\0'; ++ch) {
+        if (*ch == 'h') {
+          arguments->has_help = true;
+
+          return NULL_ERROR;
+        } else if (*ch == 'v') {
+          arguments->has_version = true;
+
+          return NULL_ERROR;
+        } else {
+          const size_t index = char_to_index(*ch);
+
+          if (index == SIZE_MAX) {
+            continue;
+          }
+
+          KeywordArgument *const selected_arg = short_option_mapping[index];
+
+          if (!selected_arg) {
+            continue;
+          }
+
+          if (selected_arg->parser) {
+            break;
+          }
+        }
+      }
     }
-
-    options[i + 2] = (struct option){
-        .name = this_keyword_arg->long_name,
-        .has_arg = has_arg,
-        .flag = NULL,
-        .val = this_keyword_arg->short_name,
-    };
   }
 
-  // 3 chars for 'h', 'v', and null terminator '\0'
-  // no value keyword arguments are just '<c>' (1 char)
-  // required value keyword arguments are '<c>::' (3 chars)
-  char *const optstr = malloc(3 + num_no_value_keyword_arguments +
-                              3 * num_required_value_keyword_arguments);
+  TrieNode root = {.children = {NULL}, .value = NULL};
+  Error error = NULL_ERROR;
 
-  if (!optstr) {
-    free(options);
-
-    return ERROR_OUT_OF_MEMORY;
-  }
-
-  memcpy(optstr, "hv", 2);
-  char *write_ptr = optstr + 2;
   for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
-    const KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+    KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
 
-    *write_ptr = this_keyword_arg->short_name;
-    ++write_ptr;
+    if (!insert_unique(&root, this_keyword_arg->long_name, this_keyword_arg)) {
+      error = ERROR_OUT_OF_MEMORY;
 
-    if (this_keyword_arg->parser) {
-      memcpy(write_ptr, "::", 2);
-      write_ptr += 2;
-    }
-  }
-  *write_ptr = '\0';
-
-  opterr = false;
-  arguments->has_help = false;
-  arguments->has_version = false;
-
-  while (true) {
-    const int option_char = getopt_long(argc, argv, optstr, options, NULL);
-
-    if (option_char == 'h') {
-      arguments->has_help = true;
-    } else if (option_char == 'v') {
-      arguments->has_version = true;
-    } else if (option_char == -1) {
-      break;
+      goto cleanup;
     }
   }
 
-  if (arguments->has_help || arguments->has_version) {
-    free(optstr);
-    free(options);
+  size_t positional_arg_index = 0;
+  for (size_t i = 1; i < last_index; ++i) {
+    const char *const this_argument = argv[i];
 
-    return NULL_ERROR;
-  }
+    if (this_argument[0] != '-') {
+      // positional argument
+      if (positional_arg_index >= arguments->num_positional_args) {
+        error =
+            eformat("expected %zu positional arguments, got at least %zu",
+                    arguments->num_positional_args, positional_arg_index + 1);
 
-  optind = 1;
+        goto cleanup;
+      }
 
-  while (true) {
-    const int option_char = getopt_long(argc, argv, optstr, options, NULL);
+      PositionalArgument *const this_positional_arg =
+          arguments->positional_args[positional_arg_index];
+      ++positional_arg_index;
 
-    if (option_char == -1) {
-      break;
+      assert(this_positional_arg);
+      assert(this_positional_arg->parser);
+
+      error = this_positional_arg->parser->parser(this_positional_arg->parser,
+                                                  this_argument);
+
+      if (error.what) {
+        goto cleanup;
+      }
+
+      continue;
     }
 
-    switch (option_char) {
-    case 'h':
-      break;
-    case 'v':
-      break;
-    case '?':
-      free(optstr);
-      free(options);
+    if (this_argument[1] == '-') {
+      // long argument
+      const char *maybe_value;
+      KeywordArgument *const this_keyword_arg =
+          find(&root, this_argument + 2, &maybe_value);
 
-      return eformat("unrecognized option '%s'", argv[optind - 1]);
-    default:
-      for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
-        KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
+      if (!this_keyword_arg) {
+        error = eformat("unrecognized option %s", this_argument);
 
-        if ((char)option_char != this_keyword_arg->short_name) {
+        goto cleanup;
+      }
+
+      // either --key=value
+      // or --key value
+      if (!maybe_value) {
+        if (i + 1 >= last_index) {
+          error = eformat("missing required argument for option -%c, --%s",
+                          this_keyword_arg->short_name,
+                          this_keyword_arg->long_name);
+
+          goto cleanup;
+        }
+
+        maybe_value = argv[i + 1];
+        assert(maybe_value);
+        ++i;
+      }
+
+      error = this_keyword_arg->parser->parser(this_keyword_arg->parser,
+                                               maybe_value);
+
+      if (error.what) {
+        goto cleanup;
+      }
+    } else {
+      // short argument(s)
+      for (const char *ch = this_argument + 1; *ch != '\0'; ++ch) {
+        const size_t index = char_to_index(*ch);
+
+        if (index == SIZE_MAX) {
+          error = eformat("unrecognized option -%c", *ch);
+
+          goto cleanup;
+        }
+
+        KeywordArgument *const this_keyword_arg = short_option_mapping[index];
+
+        if (!this_keyword_arg) {
+          error = eformat("unrecognized option -%c", *ch);
+
+          goto cleanup;
+        }
+
+        if (!this_keyword_arg->parser) {
+          this_keyword_arg->was_found = true;
+
           continue;
         }
 
-        if (this_keyword_arg->parser) {
-          const char *const maybe_value_str = optarg;
+        const char *maybe_value;
+        bool contains_value;
 
-          if (!maybe_value_str) {
-            free(optstr);
-            free(options);
+        if (*(ch + 1) == '\0') {
+          if (i + 1 >= last_index) {
+            error = eformat("missing required argument for option -%c, --%s",
+                            this_keyword_arg->short_name,
+                            this_keyword_arg->long_name);
 
-            return eformat("missing required argument for option -%c, --%s",
-                           this_keyword_arg->short_name,
-                           this_keyword_arg->long_name);
+            goto cleanup;
           }
 
-          const Error error = this_keyword_arg->parser->parser(
-              this_keyword_arg->parser, maybe_value_str);
+          maybe_value = argv[i + 1];
+          assert(maybe_value);
+          ++i;
 
-          if (error.what) {
-            free(optstr);
-            free(options);
-
-            return error;
-          }
+          contains_value = false;
+        } else if (*(ch + 1) == '=') {
+          maybe_value = ch + 2;
+          contains_value = true;
+        } else {
+          maybe_value = ch + 1;
+          contains_value = true;
         }
 
-        this_keyword_arg->was_found = true;
+        error = this_keyword_arg->parser->parser(this_keyword_arg->parser,
+                                                 maybe_value);
 
-        break;
+        if (error.what) {
+          goto cleanup;
+        }
+
+        if (contains_value) {
+          break;
+        }
       }
+    }
+  }
 
+  for (size_t i = last_index + 1; i < (size_t)argc; ++i) {
+    if (positional_arg_index >= arguments->num_positional_args) {
+      const size_t num_positional_args = (size_t)argc - (last_index + 1);
+
+      error = eformat("expected %zu positional arguments, got %zu",
+                      arguments->num_positional_args, num_positional_args);
+
+      break;
+    }
+
+    PositionalArgument *const this_positional_arg =
+        arguments->positional_args[positional_arg_index];
+    ++positional_arg_index;
+
+    assert(this_positional_arg);
+    assert(this_positional_arg->parser);
+
+    error = this_positional_arg->parser->parser(this_positional_arg->parser,
+                                                argv[i]);
+
+    if (error.what) {
       break;
     }
   }
 
-  free(options);
-  free(optstr);
-
-  for (size_t i = 0; i < arguments->num_positional_args; ++i) {
+  if (positional_arg_index < arguments->num_positional_args) {
     const PositionalArgument *const this_positional_arg =
-        arguments->positional_args[i];
-    assert(this_positional_arg);
+        arguments->positional_args[positional_arg_index];
 
-    if ((size_t)optind + i >= (size_t)argc) {
-      return eformat("missing argument %s", this_positional_arg->name);
-    }
-
-    const Error error = this_positional_arg->parser->parser(
-        this_positional_arg->parser, argv[(size_t)optind + i]);
-
-    if (error.what) {
-      return error;
-    }
+    error = eformat("missing required positional argument %s",
+                    this_positional_arg->name);
   }
 
-  return NULL_ERROR;
+cleanup:
+  deallocate_children(&root);
+
+  return error;
 }
 
 #define UNWRITEABLE_HELP_TEXT()                                                \
@@ -605,6 +691,88 @@ static Error print_version_info(void) {
   }
 
   return NULL_ERROR;
+}
+
+static KeywordArgument *find(const TrieNode *node, const char *key,
+                             const char **maybe_value) {
+  assert(node);
+  assert(key);
+  assert(maybe_value);
+
+  if (*key == '\0') {
+    *maybe_value = NULL;
+
+    return node->value;
+  } else if (*key == '=') {
+    *maybe_value = key + 1;
+
+    return node->value;
+  }
+
+  size_t index = char_to_index(*key);
+
+  if (index == SIZE_MAX) {
+    if (*key == '-') {
+      index = NUM_NODE_CHILDREN - 1;
+    } else {
+      return NULL;
+    }
+  }
+
+  const TrieNode *const maybe_child = node->children[index];
+
+  if (!maybe_child) {
+    return NULL;
+  }
+
+  return find(maybe_child, key + 1, maybe_value);
+}
+
+static TrieNode *insert_unique(TrieNode *node, const char *key,
+                               KeywordArgument *value) {
+  assert(node);
+  assert(value);
+
+  if (*key == '\0') {
+    assert(!node->value);
+
+    node->value = value;
+
+    return node;
+  }
+
+  size_t index = char_to_index(*key);
+
+  if (index == SIZE_MAX) {
+    assert(*key == '-');
+    index = NUM_NODE_CHILDREN - 1;
+  }
+
+  TrieNode **const maybe_child_ptr = &node->children[index];
+
+  if (!*maybe_child_ptr) {
+    TrieNode *const new_child = malloc(sizeof(TrieNode));
+
+    if (!new_child) {
+      return NULL;
+    }
+
+    *new_child = (TrieNode){.children = {NULL}, .value = NULL};
+    *maybe_child_ptr = new_child;
+  }
+
+  return insert_unique(*maybe_child_ptr, key + 1, value);
+}
+
+static void deallocate_children(TrieNode *node) {
+  assert(node);
+
+  for (size_t i = 0; i < NUM_NODE_CHILDREN; ++i) {
+    if (node->children[i]) {
+      deallocate_children(node->children[i]);
+      free(node->children[i]);
+    }
+  }
 }
 
 static Error do_parse_integer(ArgumentParser *self_base,

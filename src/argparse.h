@@ -95,7 +95,7 @@ StringArgumentParser make_string_parser(const char *name,
                                         size_t num_possible_values);
 PassthroughArgumentParser make_passthrough_parser(const char *name);
 
-Error parse_arguments(Arguments *arguments, int argc, char **argv);
+Error parse_arguments(Arguments *arguments, int argc, const char *const argv[]);
 Error print_help(const Arguments *arguments);
 Error print_version(const Arguments *arguments);
 
