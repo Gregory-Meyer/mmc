@@ -48,8 +48,8 @@ int main(int argc, const char *const argv[]) {
       .help_text =
           "Filename of the uncompressed file to create. If this file already "
           "exists, it is truncated to length 0 before being written to. Should "
-          "mmap-deflate exit with an error after truncating this file, it will "
-          "be deletect. The current user must have write permissions in this "
+          "mmap-inflate exit with an error after truncating this file, it will "
+          "be deleted. The current user must have write permissions in this "
           "file's parent directory and, if the file already exists, write "
           "permissions on this file.",
       .parser = &output_filename_parser.argument_parser};
