@@ -57,7 +57,7 @@ int main(int argc, const char *const argv[]) {
 
   Arguments arguments = {
       .executable_name = "mmap-lz4-decompress",
-      .version = "0.1.2",
+      .version = "0.2.0",
       .author = "Gregory Meyer <me@gregjm.dev>",
       .description =
           "mmap-lz4-decompress (mld) uncompresses a file using the LZ4 "

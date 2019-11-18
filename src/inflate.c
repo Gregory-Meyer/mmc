@@ -58,7 +58,7 @@ int main(int argc, const char *const argv[]) {
 
   Arguments arguments = {
       .executable_name = "mmap-inflate",
-      .version = "0.1.2",
+      .version = "0.2.0",
       .author = "Gregory Meyer <me@gregjm.dev>",
       .description =
           "mmap-inflate (mi) uncompresses a file that was compressed by "

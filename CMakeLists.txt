@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(MemoryMappedFileCompression VERSION 0.1.2 LANGUAGES C)
+project(MemoryMappedFileCompression VERSION 0.2.0 LANGUAGES C)
 
 list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
 

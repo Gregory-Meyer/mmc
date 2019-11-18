@@ -86,7 +86,7 @@ int main(int argc, const char *const argv[]) {
 
   Arguments arguments = {
       .executable_name = "mmap-deflate",
-      .version = "0.1.2",
+      .version = "0.2.0",
       .author = "Gregory Meyer <me@gregjm.dev>",
       .description =
           "mmap-deflate (md) compresses a file using the DEFLATE compression "
