@@ -60,6 +60,9 @@ extern const char *executable_name;
 Error open_and_map_file(const char *filename, FileAndMapping *file);
 Error create_and_map_file(const char *filename, size_t length,
                           FileAndMapping *file);
+Error unmap_unused_pages(FileAndMapping *file, size_t *first_unused_offset);
+Error expand_output_mapping(FileAndMapping *file, size_t *current_size,
+                            size_t num_bytes_in_use);
 Error free_file(FileAndMapping file);
 
 Error eformat(const char *format, ...);

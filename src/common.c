@@ -100,6 +100,67 @@ Error create_and_map_file(const char *filename, size_t length,
   return NULL_ERROR;
 }
 
+Error unmap_unused_pages(FileAndMapping *file, size_t *first_unused_offset) {
+  assert(file);
+  assert(first_unused_offset);
+
+  static const size_t UNMAP_SPAN_SIZE = 1 << 16;
+
+  const size_t num_spans_to_unmap =
+      (*first_unused_offset - 1) / UNMAP_SPAN_SIZE;
+
+  if (num_spans_to_unmap == 0) {
+    return NULL_ERROR;
+  }
+
+  const size_t num_bytes_to_unmap = num_spans_to_unmap * UNMAP_SPAN_SIZE;
+
+  if (munmap(file->contents, num_bytes_to_unmap) == -1) {
+    return ERRNO_EFORMAT("couldn't unmap part of file '%s' from memory",
+                         file->filename);
+  }
+
+  file->contents = (char *)file->contents + num_bytes_to_unmap;
+  file->size -= num_bytes_to_unmap;
+  *first_unused_offset -= num_bytes_to_unmap;
+
+  return NULL_ERROR;
+}
+
+Error expand_output_mapping(FileAndMapping *file, size_t *current_size,
+                            size_t num_bytes_in_use) {
+  assert(file);
+  assert(current_size);
+
+  if (file->size < num_bytes_in_use) {
+    return NULL_ERROR;
+  }
+
+  const size_t new_size = *current_size + *current_size;
+
+  if (ftruncate(file->fd, (off_t)new_size) == -1) {
+    return ERRNO_EFORMAT("couldn't set length of file '%s' to '%zu'",
+                         file->filename, new_size);
+  }
+
+  const size_t new_mapping_length = file->size + *current_size;
+  void *const new_contents =
+      mremap(file->contents, file->size, new_mapping_length, MREMAP_MAYMOVE);
+
+  if (new_contents == MAP_FAILED) {
+    return ERRNO_EFORMAT(
+        "couldn't remap %zu more bytes to mapping associated with file '%s'",
+        current_size, file->filename);
+  }
+
+  file->contents = new_contents;
+  file->size = new_mapping_length;
+
+  *current_size = new_size;
+
+  return NULL_ERROR;
+}
+
 Error free_file(FileAndMapping file) {
   if (munmap(file.contents, file.size) == -1) {
     close(file.fd);
