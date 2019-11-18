@@ -169,26 +169,29 @@ Error parse_arguments(Arguments *arguments, int argc,
   }
 
   size_t last_index = (size_t)argc;
+  arguments->has_help = false;
+  arguments->has_version = false;
 
   for (size_t i = 1; i < (size_t)argc; ++i) {
     const char *const this_argument = argv[i];
     assert(this_argument);
 
-    if (strcmp(argv[i], "--") == 0) {
+    if (strcmp(this_argument, "--") == 0) {
       last_index = i;
 
       break;
-    } else if (argv[i][0] != '-') {
+    } else if (this_argument[0] != '-') {
+      // positional argument
       continue;
     }
 
     if (argv[i][1] == '-') {
       // long option
-      if (strcmp(argv[i] + 2, "help") == 0) {
+      if (strcmp(this_argument + 2, "help") == 0) {
         arguments->has_help = true;
 
         return NULL_ERROR;
-      } else if (strcmp(argv[i] + 2, "version") == 0) {
+      } else if (strcmp(this_argument + 2, "version") == 0) {
         arguments->has_version = true;
 
         return NULL_ERROR;
@@ -196,7 +199,7 @@ Error parse_arguments(Arguments *arguments, int argc,
     } else {
       // short option(s)
 
-      for (const char *ch = argv[i] + 1; *ch != '\0'; ++ch) {
+      for (const char *ch = this_argument + 1; *ch != '\0'; ++ch) {
         if (*ch == 'h') {
           arguments->has_help = true;
 
