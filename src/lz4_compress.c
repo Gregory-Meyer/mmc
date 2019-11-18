@@ -56,30 +56,6 @@ int main(int argc, const char *const argv[]) {
 
   PositionalArgument *positional_args[] = {&input_filename, &output_filename};
 
-  KeywordArgument favor_decompression_speed = {
-      .short_name = 'd',
-      .long_name = "favor-decompression-speed",
-      .help_text =
-          "If set, the parser will favor decompression speed over compression "
-          "ratio. Only works for compression levels of at least " STRINGIFY(
-              LZ4HC_CLEVEL_OPT_MIN) ".",
-      .parser = NULL};
-
-  char level_help_text[512];
-  sprintf(
-      level_help_text,
-      "Compression level to use. An integer in the range [%d, " STRINGIFY(
-          LZ4HC_CLEVEL_MAX) "]. "
-                            "Negative values trigger \"fast acceleration.\"",
-      INT_MIN);
-
-  IntegerArgumentParser level_parser = make_integer_parser(
-      "-l, --level", "LEVEL", (long long)INT_MIN, LZ4HC_CLEVEL_MAX);
-  KeywordArgument level = {.short_name = 'l',
-                           .long_name = "level",
-                           .help_text = level_help_text,
-                           .parser = &level_parser.argument_parser};
-
   static const LZ4F_blockMode_t block_mode_mapping[] = {LZ4F_blockLinked,
                                                         LZ4F_blockIndependent};
   StringArgumentParser block_mode_parser = make_string_parser(
@@ -107,8 +83,32 @@ int main(int argc, const char *const argv[]) {
       .parser = &block_size_parser.argument_parser,
   };
 
-  KeywordArgument *keyword_args[] = {&favor_decompression_speed, &level,
-                                     &block_mode, &block_size};
+  KeywordArgument favor_decompression_speed = {
+      .short_name = 'd',
+      .long_name = "favor-decompression-speed",
+      .help_text =
+          "If set, the parser will favor decompression speed over compression "
+          "ratio. Only works for compression levels of at least " STRINGIFY(
+              LZ4HC_CLEVEL_OPT_MIN) ".",
+      .parser = NULL};
+
+  char level_help_text[512];
+  sprintf(
+      level_help_text,
+      "Compression level to use. An integer in the range [%d, " STRINGIFY(
+          LZ4HC_CLEVEL_MAX) "]. "
+                            "Negative values trigger \"fast acceleration.\"",
+      INT_MIN);
+
+  IntegerArgumentParser level_parser = make_integer_parser(
+      "-l, --level", "LEVEL", (long long)INT_MIN, LZ4HC_CLEVEL_MAX);
+  KeywordArgument level = {.short_name = 'l',
+                           .long_name = "level",
+                           .help_text = level_help_text,
+                           .parser = &level_parser.argument_parser};
+
+  KeywordArgument *keyword_args[] = {&block_mode, &block_size,
+                                     &favor_decompression_speed, &level};
 
   Arguments arguments = {
       .executable_name = "mmap-lz4-compress",
