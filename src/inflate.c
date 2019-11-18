@@ -34,7 +34,7 @@ Error do_decompress(z_stream *stream, bool *finished);
 
 int main(int argc, const char *const argv[]) {
   PassthroughArgumentParser input_filename_parser =
-      make_passthrough_parser("INPUT_FILE");
+      make_passthrough_parser("INPUT_FILE", NULL);
   PositionalArgument input_filename = {
       .name = "INPUT_FILE",
       .help_text = "Compressed file to read from. The current user must have "
@@ -42,7 +42,7 @@ int main(int argc, const char *const argv[]) {
       .parser = &input_filename_parser.argument_parser};
 
   PassthroughArgumentParser output_filename_parser =
-      make_passthrough_parser("OUTUPT_FILE");
+      make_passthrough_parser("OUTUPT_FILE", NULL);
   PositionalArgument output_filename = {
       .name = "OUTPUT_FILE",
       .help_text =

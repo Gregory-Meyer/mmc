@@ -60,33 +60,43 @@ static size_t char_to_index(char ch) {
   }
 }
 
-IntegerArgumentParser make_integer_parser(const char *name, long long min_value,
+IntegerArgumentParser make_integer_parser(const char *name,
+                                          const char *metavariable,
+                                          long long min_value,
                                           long long max_value) {
   assert(name);
   assert(min_value <= max_value);
 
   return (IntegerArgumentParser){
-      .argument_parser = {.name = name, .parser = do_parse_integer},
+      .argument_parser = {.name = name,
+                          .metavariable = metavariable,
+                          .parser = do_parse_integer},
       .min_value = min_value,
       .max_value = max_value};
 }
 
 StringArgumentParser make_string_parser(const char *name,
+                                        const char *metavariable,
                                         const char **possible_values,
                                         size_t num_possible_values) {
   assert(name);
 
   return (StringArgumentParser){
-      .argument_parser = {.name = name, .parser = do_parse_string},
+      .argument_parser = {.name = name,
+                          .metavariable = metavariable,
+                          .parser = do_parse_string},
       .possible_values = possible_values,
       .num_possible_values = num_possible_values};
 }
 
-PassthroughArgumentParser make_passthrough_parser(const char *name) {
+PassthroughArgumentParser make_passthrough_parser(const char *name,
+                                                  const char *metavariable) {
   assert(name);
 
   return (PassthroughArgumentParser){
-      .argument_parser = {.name = name, .parser = do_parse_passthrough}};
+      .argument_parser = {.name = name,
+                          .metavariable = metavariable,
+                          .parser = do_parse_passthrough}};
 }
 
 static int keyword_argument_long_name_strcmp(const void *lhs_v,
@@ -520,9 +530,19 @@ Error print_help(const Arguments *arguments) {
     const KeywordArgument *const this_keyword_arg = arguments->keyword_args[i];
     assert(this_keyword_arg);
 
-    if (printf("\n    -%c, --%s", this_keyword_arg->short_name,
-               this_keyword_arg->long_name) < 0) {
-      return UNWRITEABLE_HELP_TEXT();
+    if (this_keyword_arg->parser) {
+      assert(this_keyword_arg->parser->metavariable);
+
+      if (printf("\n    -%c, --%s=%s", this_keyword_arg->short_name,
+                 this_keyword_arg->long_name,
+                 this_keyword_arg->parser->metavariable) < 0) {
+        return UNWRITEABLE_HELP_TEXT();
+      }
+    } else {
+      if (printf("\n    -%c, --%s", this_keyword_arg->short_name,
+                 this_keyword_arg->long_name) < 0) {
+        return UNWRITEABLE_HELP_TEXT();
+      }
     }
 
     const char *const maybe_help_text = this_keyword_arg->help_text;

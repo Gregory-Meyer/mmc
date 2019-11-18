@@ -35,7 +35,7 @@ Error do_compress(z_stream *stream, bool *finished);
 
 int main(int argc, const char *const argv[]) {
   PassthroughArgumentParser input_filename_parser =
-      make_passthrough_parser("INPUT_FILE");
+      make_passthrough_parser("INPUT_FILE", NULL);
   PositionalArgument input_filename = {
       .name = "INPUT_FILE",
       .help_text = "Uncompressed file to read from. The current user must have "
@@ -43,7 +43,7 @@ int main(int argc, const char *const argv[]) {
       .parser = &input_filename_parser.argument_parser};
 
   PassthroughArgumentParser output_filename_parser =
-      make_passthrough_parser("OUTUPT_FILE");
+      make_passthrough_parser("OUTUPT_FILE", NULL);
   PositionalArgument output_filename = {
       .name = "OUTPUT_FILE",
       .help_text =
@@ -57,8 +57,8 @@ int main(int argc, const char *const argv[]) {
 
   PositionalArgument *positional_args[] = {&input_filename, &output_filename};
 
-  IntegerArgumentParser level_parser =
-      make_integer_parser("-l, --level", Z_NO_COMPRESSION, Z_BEST_COMPRESSION);
+  IntegerArgumentParser level_parser = make_integer_parser(
+      "-l, --level", "LEVEL", Z_NO_COMPRESSION, Z_BEST_COMPRESSION);
   KeywordArgument level = {
       .short_name = 'l',
       .long_name = "level",
@@ -72,7 +72,7 @@ int main(int argc, const char *const argv[]) {
   const int strategy_mapping[] = {Z_DEFAULT_STRATEGY, Z_FILTERED,
                                   Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED};
   StringArgumentParser strategy_parser =
-      make_string_parser("-s, --strategy", strategy_values,
+      make_string_parser("-s, --strategy", "STRATEGY", strategy_values,
                          sizeof(strategy_values) / sizeof(strategy_values[0]));
   KeywordArgument strategy = {
       .short_name = 's',

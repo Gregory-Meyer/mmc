@@ -28,6 +28,7 @@
 
 typedef struct ArgumentParser {
   const char *name;
+  const char *metavariable;
   Error (*parser)(struct ArgumentParser *self, const char *maybe_value_str);
 } ArgumentParser;
 
@@ -88,12 +89,16 @@ typedef struct Arguments {
 extern "C" {
 #endif
 
-IntegerArgumentParser make_integer_parser(const char *name, long long min_value,
+IntegerArgumentParser make_integer_parser(const char *name,
+                                          const char *metavariable,
+                                          long long min_value,
                                           long long max_value);
 StringArgumentParser make_string_parser(const char *name,
+                                        const char *metavariable,
                                         const char **possible_values,
                                         size_t num_possible_values);
-PassthroughArgumentParser make_passthrough_parser(const char *name);
+PassthroughArgumentParser make_passthrough_parser(const char *name,
+                                                  const char *metavariable);
 
 Error parse_arguments(Arguments *arguments, int argc, const char *const argv[]);
 Error print_help(const Arguments *arguments);
