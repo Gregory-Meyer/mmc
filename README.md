@@ -69,6 +69,7 @@ Tests are performed using a subset of the data from the
 | xargs.1 | [Canterbury Corpus] | GNU manual page | 4.127 KiB | 296.136 us | 752.579 us | 544.641 us | 1.496 ms | 208.976 us | 256.277 us | 530.425 us | 278.854 us |
 | xml | [Silesia Corpus] | Collected XML files | 5.097 MiB | 82.004 ms | 85.821 ms | 12.166 ms | 19.433 ms | 7.699 ms | 8.888 ms | 7.571 ms | 6.558 ms |
 
+Descriptions are copied or adapted from the [Squash Compression Benchmark].
 
 ## Memory-Mapped File I/O Implementation Details
 
