@@ -141,11 +141,11 @@ int main(int argc, const char *const argv[]) {
         LZ4F_decompress(decompression_context,
                         (char *)output_file.contents + output_first_unused,
                         &output_unused_length_or_bytes_consumed,
-                        (const char *)input_file.contents + output_first_unused,
+                        (const char *)input_file.contents + input_first_unused,
                         &input_unused_length_or_bytes_consumed, NULL);
 
     if (LZ4F_isError(maybe_decompress_errc)) {
-      const char *const what = LZ4F_getErrorName(create_errc);
+      const char *const what = LZ4F_getErrorName(maybe_decompress_errc);
 
       print_error(eformat("couldn't decompress stream: %s (%zu)", what,
                           maybe_decompress_errc));
