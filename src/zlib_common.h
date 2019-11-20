@@ -27,16 +27,8 @@
 
 #include <zlib.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
                             Error (*f)(z_stream *stream, bool *finished),
                             z_stream *stream);
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif

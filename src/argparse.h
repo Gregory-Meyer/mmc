@@ -85,10 +85,6 @@ typedef struct Arguments {
   bool has_version;
 } Arguments;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 IntegerArgumentParser make_integer_parser(const char *name,
                                           const char *metavariable,
                                           long long min_value,
@@ -104,9 +100,5 @@ Error parse_arguments(Arguments *arguments, int argc,
                       const char *const argv[argc]);
 Error print_help(const Arguments *arguments);
 Error print_version(const Arguments *arguments);
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif

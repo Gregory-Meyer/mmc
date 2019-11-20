@@ -51,10 +51,6 @@ typedef struct FileAndMapping {
   size_t size;
 } FileAndMapping;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 extern const char *executable_name;
 
 Error open_and_map_file(const char *filename, FileAndMapping *file);
@@ -67,9 +63,5 @@ Error free_file(FileAndMapping file);
 
 Error eformat(const char *format, ...);
 int print_error(Error error);
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif
