@@ -71,9 +71,9 @@ int main(int argc, const char *const argv[]) {
                                    "fixed"};
   const int strategy_mapping[] = {Z_DEFAULT_STRATEGY, Z_FILTERED,
                                   Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED};
-  StringArgumentParser strategy_parser =
-      make_string_parser("-s, --strategy", "STRATEGY", strategy_values,
-                         sizeof(strategy_values) / sizeof(strategy_values[0]));
+  StringArgumentParser strategy_parser = make_string_parser(
+      "-s, --strategy", "STRATEGY",
+      sizeof(strategy_values) / sizeof(strategy_values[0]), strategy_values);
   KeywordArgument strategy = {
       .short_name = 's',
       .long_name = "strategy",

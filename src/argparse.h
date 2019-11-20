@@ -93,14 +93,15 @@ IntegerArgumentParser make_integer_parser(const char *name,
                                           const char *metavariable,
                                           long long min_value,
                                           long long max_value);
-StringArgumentParser make_string_parser(const char *name,
-                                        const char *metavariable,
-                                        const char **possible_values,
-                                        size_t num_possible_values);
+StringArgumentParser
+make_string_parser(const char *name, const char *metavariable,
+                   size_t num_possible_values,
+                   const char *possible_values[num_possible_values]);
 PassthroughArgumentParser make_passthrough_parser(const char *name,
                                                   const char *metavariable);
 
-Error parse_arguments(Arguments *arguments, int argc, const char *const argv[]);
+Error parse_arguments(Arguments *arguments, int argc,
+                      const char *const argv[argc]);
 Error print_help(const Arguments *arguments);
 Error print_version(const Arguments *arguments);
 

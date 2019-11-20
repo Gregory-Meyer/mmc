@@ -58,8 +58,9 @@ int main(int argc, const char *const argv[]) {
 
   static const LZ4F_blockMode_t block_mode_mapping[] = {LZ4F_blockLinked,
                                                         LZ4F_blockIndependent};
-  StringArgumentParser block_mode_parser = make_string_parser(
-      "-m, --block-mode", "MODE", (const char *[]){"linked", "independent"}, 2);
+  StringArgumentParser block_mode_parser =
+      make_string_parser("-m, --block-mode", "MODE", 2,
+                         (const char *[2]){"linked", "independent"});
   KeywordArgument block_mode = {
       .short_name = 'm',
       .long_name = "block-mode",
@@ -71,8 +72,8 @@ int main(int argc, const char *const argv[]) {
   static const LZ4F_blockSizeID_t block_size_mapping[] = {
       LZ4F_default, LZ4F_max64KB, LZ4F_max256KB, LZ4F_max1MB, LZ4F_max4MB};
   StringArgumentParser block_size_parser = make_string_parser(
-      "-s, --block-size", "SIZE",
-      (const char *[]){"default", "64KB", "256KB", "1MB", "4MB"}, 5);
+      "-s, --block-size", "SIZE", 5,
+      (const char *[5]){"default", "64KB", "256KB", "1MB", "4MB"});
   KeywordArgument block_size = {
       .short_name = 's',
       .long_name = "block-size",

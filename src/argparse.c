@@ -80,10 +80,10 @@ IntegerArgumentParser make_integer_parser(const char *name,
       .max_value = max_value};
 }
 
-StringArgumentParser make_string_parser(const char *name,
-                                        const char *metavariable,
-                                        const char **possible_values,
-                                        size_t num_possible_values) {
+StringArgumentParser
+make_string_parser(const char *name, const char *metavariable,
+                   size_t num_possible_values,
+                   const char *possible_values[num_possible_values]) {
   assert(name);
 
   return (StringArgumentParser){
@@ -110,7 +110,7 @@ static int keyword_argument_short_name_strcmp(const void *lhs_v,
                                               const void *rhs_v);
 
 Error parse_arguments(Arguments *arguments, int argc,
-                      const char *const argv[]) {
+                      const char *const argv[argc]) {
 #ifndef NDEBUG
   assert(arguments);
 
@@ -475,8 +475,10 @@ cleanup:
 static Error print_paragraph(const char *paragraph, size_t indent);
 static Error print_help_info(void);
 static Error print_version_info(void);
-static size_t lower_bound(const KeywordArgument *const *keyword_args,
-                          size_t num_keyword_args, const char *long_name);
+static size_t
+lower_bound(size_t num_keyword_args,
+            const KeywordArgument *const keyword_args[num_keyword_args],
+            const char *long_name);
 
 Error print_help(const Arguments *arguments) {
   assert(arguments);
@@ -553,12 +555,12 @@ Error print_help(const Arguments *arguments) {
   bool printed_help = false;
   bool printed_version = false;
 
-  const size_t help_before_index =
-      lower_bound((const KeywordArgument *const *)arguments->keyword_args,
-                  arguments->num_keyword_args, "help");
-  const size_t version_before_index =
-      lower_bound((const KeywordArgument *const *)arguments->keyword_args,
-                  arguments->num_keyword_args, "version");
+  const size_t help_before_index = lower_bound(
+      arguments->num_keyword_args,
+      (const KeywordArgument *const *)arguments->keyword_args, "help");
+  const size_t version_before_index = lower_bound(
+      arguments->num_keyword_args,
+      (const KeywordArgument *const *)arguments->keyword_args, "version");
 
   for (size_t i = 0; i < arguments->num_keyword_args; ++i) {
     if (i == help_before_index) {
@@ -734,8 +736,12 @@ static Error print_paragraph(const char *paragraph, size_t indent) {
   return NULL_ERROR;
 }
 
-static size_t lower_bound(const KeywordArgument *const *keyword_args,
-                          size_t num_keyword_args, const char *long_name) {
+static size_t
+lower_bound(size_t num_keyword_args,
+            const KeywordArgument *const keyword_args[num_keyword_args],
+            const char *long_name) {
+  assert(long_name);
+
   if (num_keyword_args == 0) {
     return 0;
   }
