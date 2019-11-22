@@ -18,147 +18,121 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <argparse.h>
-#include <common.h>
-#include <zlib_common.h>
+#include <common/app.h>
+#include <common/argparse.h>
+#include <common/error.h>
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <zlib.h>
 
+#define MIN(X, Y) (((Y) < (X)) ? (Y) : (X))
+
+typedef struct State {
+  IntegerArgumentParser level_parser;
+  KeywordArgument level;
+
+  StringArgumentParser strategy_parser;
+  KeywordArgument strategy;
+
+  z_stream stream;
+} State;
+
+size_t size(size_t input_file_size, void *state_v);
+Error init(AppIOState *io_state, void *state_v);
+Error run(AppIOState *io_state, bool *finished, void *state_v);
+void cleanup(AppIOState *io_state, void *state_v);
+
 size_t max_compressed_size(size_t uncompressed_size);
-Error do_compress(z_stream *stream, bool *finished);
+
+static const char *const STRATEGY_VALUES[] = {"default", "filtered",
+                                              "huffman-only", "rle", "fixed"};
+static const int STRATEGY_MAPPING[] = {Z_DEFAULT_STRATEGY, Z_FILTERED,
+                                       Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED};
 
 int main(int argc, const char *const argv[]) {
-  PassthroughArgumentParser input_filename_parser =
-      make_passthrough_parser("INPUT_FILE", NULL);
-  PositionalArgument input_filename = {
-      .name = "INPUT_FILE",
-      .help_text = "Uncompressed file to read from. The current user must have "
-                   "the correct permissions to read from this file.",
-      .parser = &input_filename_parser.argument_parser};
+  State state = {
+      .level_parser = make_integer_parser("-l, --level", "LEVEL",
+                                          Z_NO_COMPRESSION, Z_BEST_COMPRESSION),
+      .level =
+          {.short_name = 'l',
+           .long_name = "level",
+           .help_text =
+               "Compression level to use. An integer in the range [" STRINGIFY(
+                   Z_NO_COMPRESSION) ", " STRINGIFY(Z_BEST_COMPRESSION) "].",
+           .parser = &state.level_parser.argument_parser},
 
-  PassthroughArgumentParser output_filename_parser =
-      make_passthrough_parser("OUTUPT_FILE", NULL);
-  PositionalArgument output_filename = {
-      .name = "OUTPUT_FILE",
-      .help_text =
-          "Filename of the compressed file to create. If this file already "
-          "exists, it is truncated to length 0 before being written to. Should "
-          "mmap-deflate exit with an error after truncating this file, it will "
-          "be deleted. The current user must have write permissions in this "
-          "file's parent directory and, if the file already exists, write "
-          "permissions on this file.",
-      .parser = &output_filename_parser.argument_parser};
+      .strategy_parser = make_string_parser("-s, --strategy", "STRATEGY",
+                                            sizeof(STRATEGY_VALUES) /
+                                                sizeof(STRATEGY_VALUES[0]),
+                                            STRATEGY_VALUES),
+      .strategy =
+          {.short_name = 's',
+           .long_name = "strategy",
+           .help_text =
+               "Compression strategy to use. One of 'default', 'filtered', "
+               "'huffman-only', 'rle', or 'fixed', corresponding to the "
+               "zlib compression strategies.",
+           .parser = &state.strategy_parser.argument_parser},
+  };
 
-  PositionalArgument *positional_args[] = {&input_filename, &output_filename};
+  KeywordArgument *keyword_args[] = {&state.level, &state.strategy};
 
-  IntegerArgumentParser level_parser = make_integer_parser(
-      "-l, --level", "LEVEL", Z_NO_COMPRESSION, Z_BEST_COMPRESSION);
-  KeywordArgument level = {
-      .short_name = 'l',
-      .long_name = "level",
-      .help_text =
-          "Compression level to use. An integer in the range [" STRINGIFY(
-              Z_NO_COMPRESSION) ", " STRINGIFY(Z_BEST_COMPRESSION) "].",
-      .parser = &level_parser.argument_parser};
+  return run_compression_app(
+      argc, argv,
+      &(AppParams){
+          .executable_name = "mmap-deflate",
+          .version = "0.2.1",
+          .author = "Gregory Meyer <me@gregjm.dev>",
+          .description = "mmap-deflate (md) compresses a file using the "
+                         "DEFLATE compression "
+                         "algorithm. zlib is used for compression and "
+                         "memory-mapped files are "
+                         "used to read and write data to disk.",
 
-  const char *strategy_values[] = {"default", "filtered", "huffman-only", "rle",
-                                   "fixed"};
-  const int strategy_mapping[] = {Z_DEFAULT_STRATEGY, Z_FILTERED,
-                                  Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED};
-  StringArgumentParser strategy_parser = make_string_parser(
-      "-s, --strategy", "STRATEGY",
-      sizeof(strategy_values) / sizeof(strategy_values[0]), strategy_values);
-  KeywordArgument strategy = {
-      .short_name = 's',
-      .long_name = "strategy",
-      .help_text = "Compression strategy to use. One of 'default', 'filtered', "
-                   "'huffman-only', 'rle', or 'fixed', corresponding to the "
-                   "zlib compression strategies.",
-      .parser = &strategy_parser.argument_parser};
+          .keyword_args = keyword_args,
+          .num_keyword_args = sizeof(keyword_args) / sizeof(keyword_args[0]),
 
-  KeywordArgument *keyword_args[] = {&strategy, &level};
+          .size = size,
+          .init = init,
+          .run = run,
+          .cleanup = cleanup,
+          .arg = &state,
+      });
+}
 
-  Arguments arguments = {
-      .executable_name = "mmap-deflate",
-      .version = "0.2.1",
-      .author = "Gregory Meyer <me@gregjm.dev>",
-      .description =
-          "mmap-deflate (md) compresses a file using the DEFLATE compression "
-          "algorithm. zlib is used for compression and memory-mapped files are "
-          "used to read and write data to disk.",
+size_t size(size_t input_file_size, void *state_v) {
+  (void)state_v;
 
-      .positional_args = positional_args,
-      .num_positional_args =
-          sizeof(positional_args) / sizeof(positional_args[0]),
+  return max_compressed_size(input_file_size);
+}
 
-      .keyword_args = keyword_args,
-      .num_keyword_args = sizeof(keyword_args) / sizeof(keyword_args[0])};
+Error init(AppIOState *io_state, void *state_v) {
+  assert(io_state);
+  assert(state_v);
 
-  Error error = parse_arguments(&arguments, argc, argv);
-
-  if (error.what) {
-    print_error(error);
-
-    return EXIT_FAILURE;
-  }
-
-  if (arguments.has_help) {
-    print_help(&arguments);
-
-    return EXIT_SUCCESS;
-  } else if (arguments.has_version) {
-    print_version(&arguments);
-
-    return EXIT_SUCCESS;
-  }
+  State *const state = (State *)state_v;
 
   int strategy_value = Z_DEFAULT_STRATEGY;
-  if (strategy.was_found) {
-    strategy_value = strategy_mapping[strategy_parser.value_index];
+  if (state->strategy.was_found) {
+    strategy_value = STRATEGY_MAPPING[state->strategy_parser.value_index];
   }
 
   int level_value = Z_DEFAULT_COMPRESSION;
-  if (level.was_found) {
-    level_value = (int)level_parser.value;
+  if (state->level.was_found) {
+    level_value = (int)state->level_parser.value;
   }
 
-  FileAndMapping input_file;
-  error = open_and_map_file(input_filename_parser.value, &input_file);
-  int return_code = EXIT_SUCCESS;
+  state->stream =
+      (z_stream){.zalloc = Z_NULL, .zfree = Z_NULL, .opaque = Z_NULL};
 
-  if (error.what) {
-    print_error(error);
-
-    return EXIT_FAILURE;
-  }
-
-  FileAndMapping output_file;
-  error =
-      create_and_map_file(output_filename_parser.value,
-                          max_compressed_size(input_file.size), &output_file);
-
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-
-    goto cleanup_input_only;
-  }
-
-  z_stream stream = {.zalloc = Z_NULL, .zfree = Z_NULL, .opaque = Z_NULL};
-
-  const int init_errc =
-      deflateInit2(&stream, level_value, Z_DEFLATED, 15, 8, strategy_value);
+  const int init_errc = deflateInit2(&state->stream, level_value, Z_DEFLATED,
+                                     15, 8, strategy_value);
 
   if (init_errc != Z_OK) {
     assert(init_errc != Z_STREAM_ERROR);
-
-    return_code = EXIT_FAILURE;
 
     const char *what;
     switch (init_errc) {
@@ -172,62 +146,44 @@ int main(int argc, const char *const argv[]) {
 
       break;
     default:
-      abort();
+      assert(false);
     }
 
-    if (stream.msg) {
-      error = eformat("couldn't initialize deflate stream: %s (%d): %s", what,
-                      init_errc, stream.msg);
+    if (state->stream.msg) {
+      return eformat("couldn't initialize deflate stream: %s (%d): %s", what,
+                     init_errc, state->stream.msg);
     } else {
-      error = eformat("couldn't initialize deflate stream: %s (%d)", what,
-                      init_errc);
-    }
-
-    print_error(error);
-
-    goto cleanup;
-  }
-
-  error =
-      transform_mapped_file(&input_file, &output_file, do_compress, &stream);
-
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-  }
-
-  const int deflate_end_errc = deflateEnd(&stream);
-  assert(deflate_end_errc == Z_OK);
-
-cleanup:
-  error = free_file(output_file);
-
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-  }
-
-  if (return_code != EXIT_SUCCESS) {
-    if (unlink(output_filename_parser.value) == -1) {
-      print_error(ERRNO_EFORMAT("couldn't remove file '%s'",
-                                output_filename_parser.value));
+      return eformat("couldn't initialize deflate stream: %s (%d)", what,
+                     init_errc);
     }
   }
 
-cleanup_input_only:
-  error = free_file(input_file);
-
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-  }
-
-  return return_code;
+  return NULL_ERROR;
 }
 
-Error do_compress(z_stream *stream, bool *finished) {
-  assert(stream);
+Error run(AppIOState *io_state, bool *finished, void *state_v) {
+  assert(io_state);
   assert(finished);
+  assert(state_v);
+
+  State *const state = (State *)state_v;
+
+  z_stream *const stream = &state->stream;
+
+  stream->next_in = (z_const Bytef *)io_state->input_file.mapping +
+                    io_state->input_mapping_first_unused_offset;
+  stream->avail_in = (uInt)MIN(io_state->input_file.mapping_size -
+                                   io_state->input_mapping_first_unused_offset,
+                               (size_t)UINT_MAX);
+  stream->total_in = 0;
+
+  stream->next_out = (Bytef *)io_state->output_file.mapping +
+                     io_state->output_mapping_first_unused_offset;
+  stream->avail_out =
+      (uInt)MIN(io_state->output_file.mapping_size -
+                    io_state->output_mapping_first_unused_offset,
+                (size_t)UINT_MAX);
+  stream->total_out = 0;
 
   int flag;
 
@@ -238,7 +194,13 @@ Error do_compress(z_stream *stream, bool *finished) {
     flag = Z_NO_FLUSH;
   }
 
-  const int errc = deflate(stream, flag);
+  const int errc = deflate(&state->stream, flag);
+
+  if (errc == Z_OK || errc == Z_STREAM_END) {
+    io_state->input_mapping_first_unused_offset += (size_t)stream->total_in;
+    io_state->output_mapping_first_unused_offset += (size_t)stream->total_out;
+    io_state->output_bytes_written += (size_t)stream->total_out;
+  }
 
   if (errc != Z_OK) {
     assert(errc != Z_STREAM_ERROR);
@@ -246,11 +208,11 @@ Error do_compress(z_stream *stream, bool *finished) {
 
     const char *what;
     switch (errc) {
-    case Z_STREAM_END:
+    case Z_STREAM_END: {
       *finished = true;
 
       return NULL_ERROR;
-
+    }
     case Z_NEED_DICT:
       what = "dictionary needed";
 
@@ -267,12 +229,12 @@ Error do_compress(z_stream *stream, bool *finished) {
       break;
 
     default:
-      abort();
+      assert(false);
     }
 
-    if (stream->msg) {
+    if (state->stream.msg) {
       return eformat("couldn't inflate stream: %s (%d): %s", what, errc,
-                     stream->msg);
+                     state->stream.msg);
     }
 
     return eformat("couldn't inflate stream: %s (%d)", what, errc);
@@ -281,6 +243,16 @@ Error do_compress(z_stream *stream, bool *finished) {
   *finished = false;
 
   return NULL_ERROR;
+}
+
+void cleanup(AppIOState *io_state, void *state_v) {
+  assert(io_state);
+  assert(state_v);
+
+  (void)io_state;
+
+  State *const state = (State *)state_v;
+  deflateEnd(&state->stream);
 }
 
 size_t max_compressed_size(size_t uncompressed_size) {

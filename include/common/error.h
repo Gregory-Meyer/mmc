@@ -18,17 +18,36 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ZLIB_COMMON_H
-#define ZLIB_COMMON_H
+#ifndef COMMON_ERROR_H
+#define COMMON_ERROR_H
 
-#include <common.h>
-
+#include <errno.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
-#include <zlib.h>
+#define DO_STRINGIFY(X) #X
+#define STRINGIFY(X) DO_STRINGIFY(X)
 
-Error transform_mapped_file(FileAndMapping *input, FileAndMapping *output,
-                            Error (*f)(z_stream *stream, bool *finished),
-                            z_stream *stream);
+#define STATIC_ERROR(MESSAGE)                                                  \
+  ((Error){.what = (MESSAGE), .size = sizeof(MESSAGE), .allocated = false})
+#define DO_ERRNO_EFORMAT(FORMAT, ...)                                          \
+  eformat(FORMAT "%s: %s (%d)", __VA_ARGS__, strerror(errno), errno)
+#define ERRNO_EFORMAT(...) DO_ERRNO_EFORMAT(__VA_ARGS__, "")
+#define ERROR_OUT_OF_MEMORY STATIC_ERROR("out of memory")
+#define NULL_ERROR ((Error){.what = NULL, .size = 0, .allocated = false})
+
+typedef struct Error {
+  char *what;
+  size_t size;
+  bool allocated;
+} Error;
+
+extern const char *executable_name;
+
+Error eformat(const char *format, ...);
+int print_error(Error error);
+int print_warning(Error error);
 
 #endif

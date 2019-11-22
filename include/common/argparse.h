@@ -18,10 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ARGPARSE_H
-#define ARGPARSE_H
+#ifndef COMMON_ARGPARSE_H
+#define COMMON_ARGPARSE_H
 
-#include <common.h>
+#include <common/error.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -42,7 +42,7 @@ typedef struct IntegerArgumentParser {
 
 typedef struct StringArgumentParser {
   ArgumentParser argument_parser;
-  const char **possible_values;
+  const char *const *possible_values;
   size_t num_possible_values;
 
   size_t value_index;
@@ -92,7 +92,7 @@ IntegerArgumentParser make_integer_parser(const char *name,
 StringArgumentParser
 make_string_parser(const char *name, const char *metavariable,
                    size_t num_possible_values,
-                   const char *possible_values[num_possible_values]);
+                   const char *const possible_values[num_possible_values]);
 PassthroughArgumentParser make_passthrough_parser(const char *name,
                                                   const char *metavariable);
 

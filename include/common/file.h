@@ -18,50 +18,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef COMMON_FILE_H
+#define COMMON_FILE_H
 
-#include <errno.h>
-#include <stdbool.h>
+#include <common/error.h>
+
 #include <stddef.h>
-#include <stdio.h>
-#include <string.h>
-
-#define DO_STRINGIFY(X) #X
-#define STRINGIFY(X) DO_STRINGIFY(X)
-
-#define STATIC_ERROR(MESSAGE)                                                  \
-  ((Error){.what = (MESSAGE), .size = sizeof(MESSAGE), .allocated = false})
-#define DO_ERRNO_EFORMAT(FORMAT, ...)                                          \
-  eformat(FORMAT "%s: %s (%d)", __VA_ARGS__, strerror(errno), errno)
-#define ERRNO_EFORMAT(...) DO_ERRNO_EFORMAT(__VA_ARGS__, "")
-#define ERROR_OUT_OF_MEMORY STATIC_ERROR("out of memory")
-#define NULL_ERROR ((Error){.what = NULL, .size = 0, .allocated = false})
-
-typedef struct Error {
-  char *what;
-  size_t size;
-  bool allocated;
-} Error;
 
 typedef struct FileAndMapping {
   const char *filename;
+
   int fd;
-  void *contents;
-  size_t size;
+  size_t file_size;
+
+  void *mapping;
+  size_t mapping_size;
+  size_t mapping_offset;
 } FileAndMapping;
 
-extern const char *executable_name;
-
 Error open_and_map_file(const char *filename, FileAndMapping *file);
-Error create_and_map_file(const char *filename, size_t length,
+Error create_and_map_file(const char *filename, size_t size,
                           FileAndMapping *file);
 Error unmap_unused_pages(FileAndMapping *file, size_t *first_unused_offset);
-Error expand_output_mapping(FileAndMapping *file, size_t *current_size,
-                            size_t num_bytes_in_use);
+Error expand_output_mapping(FileAndMapping *file, size_t first_unused_offset);
 Error free_file(FileAndMapping file);
-
-Error eformat(const char *format, ...);
-int print_error(Error error);
 
 #endif

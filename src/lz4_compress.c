@@ -18,81 +18,46 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <argparse.h>
-#include <common.h>
+#include <common/app.h>
+#include <common/argparse.h>
+#include <common/error.h>
 
 #include <assert.h>
 #include <limits.h>
-#include <stdlib.h>
-
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 #include <lz4frame.h>
 #include <lz4hc.h>
 
+typedef struct State {
+  StringArgumentParser block_mode_parser;
+  KeywordArgument block_mode;
+
+  StringArgumentParser block_size_parser;
+  KeywordArgument block_size;
+
+  KeywordArgument favor_decompression_speed;
+
+  IntegerArgumentParser level_parser;
+  KeywordArgument level;
+
+  LZ4F_preferences_t preferences;
+} State;
+
+size_t size(size_t input_file_size, void *state_v);
+Error run(AppIOState *io_state, bool *finished, void *state_v);
+
+static const char *const BLOCK_MODE_VALUES[] = {"linked", "independent"};
+static const LZ4F_blockMode_t BLOCK_MODE_MAPPING[] = {LZ4F_blockLinked,
+                                                      LZ4F_blockIndependent};
+
+static const char *const BLOCK_SIZE_VALUES[] = {"default", "64KB", "256KB",
+                                                "1MB", "4MB"};
+static const LZ4F_blockSizeID_t BLOCK_SIZE_MAPPING[] = {
+    LZ4F_default, LZ4F_max64KB, LZ4F_max256KB, LZ4F_max1MB, LZ4F_max4MB};
+
 int main(int argc, const char *const argv[]) {
-  PassthroughArgumentParser input_filename_parser =
-      make_passthrough_parser("INPUT_FILE", NULL);
-  PositionalArgument input_filename = {
-      .name = "INPUT_FILE",
-      .help_text = "Uncompressed file to read from. The current user must have "
-                   "the correct permissions to read from this file.",
-      .parser = &input_filename_parser.argument_parser};
-
-  PassthroughArgumentParser output_filename_parser =
-      make_passthrough_parser("OUTUPT_FILE", NULL);
-  PositionalArgument output_filename = {
-      .name = "OUTPUT_FILE",
-      .help_text =
-          "Filename of the compressed file to create. If this file already "
-          "exists, it is truncated to length 0 before being written to. Should "
-          "mmap-lz4-compress exit with an error after truncating this file, it "
-          "will be deleted. The current user must have write permissions in "
-          "this file's parent directory and, if the file already exists, write "
-          "permissions on this file.",
-      .parser = &output_filename_parser.argument_parser};
-
-  PositionalArgument *positional_args[] = {&input_filename, &output_filename};
-
-  static const LZ4F_blockMode_t block_mode_mapping[] = {LZ4F_blockLinked,
-                                                        LZ4F_blockIndependent};
-  StringArgumentParser block_mode_parser =
-      make_string_parser("-m, --block-mode", "MODE", 2,
-                         (const char *[2]){"linked", "independent"});
-  KeywordArgument block_mode = {
-      .short_name = 'm',
-      .long_name = "block-mode",
-      .help_text = "Block mode. One of {'linked', 'independent'}. Linked "
-                   "blocks compress small blocks better, but some LZ4 decoders "
-                   "are only compatible with independent blocks.",
-      .parser = &block_mode_parser.argument_parser};
-
-  static const LZ4F_blockSizeID_t block_size_mapping[] = {
-      LZ4F_default, LZ4F_max64KB, LZ4F_max256KB, LZ4F_max1MB, LZ4F_max4MB};
-  StringArgumentParser block_size_parser = make_string_parser(
-      "-s, --block-size", "SIZE", 5,
-      (const char *[5]){"default", "64KB", "256KB", "1MB", "4MB"});
-  KeywordArgument block_size = {
-      .short_name = 's',
-      .long_name = "block-size",
-      .help_text = "Maximum block size. One of {'default', '64KB', '256KB', "
-                   "'1MB', '4MB'}. The larger the block size, the better the "
-                   "compression ratio, but at the cost of increased memory "
-                   "usage when compressing and decompressing.",
-      .parser = &block_size_parser.argument_parser,
-  };
-
-  KeywordArgument favor_decompression_speed = {
-      .short_name = 'd',
-      .long_name = "favor-decompression-speed",
-      .help_text =
-          "If set, the parser will favor decompression speed over compression "
-          "ratio. Only works for compression levels of at least " STRINGIFY(
-              LZ4HC_CLEVEL_OPT_MIN) ".",
-      .parser = NULL};
-
   char level_help_text[512];
   sprintf(
       level_help_text,
@@ -101,138 +66,133 @@ int main(int argc, const char *const argv[]) {
                             "Negative values trigger \"fast acceleration.\"",
       INT_MIN);
 
-  IntegerArgumentParser level_parser = make_integer_parser(
-      "-l, --level", "LEVEL", (long long)INT_MIN, LZ4HC_CLEVEL_MAX);
-  KeywordArgument level = {.short_name = 'l',
-                           .long_name = "level",
-                           .help_text = level_help_text,
-                           .parser = &level_parser.argument_parser};
+  State state = {
+      .block_mode_parser = make_string_parser("-m, --block-mode", "MODE",
+                                              sizeof(BLOCK_MODE_VALUES) /
+                                                  sizeof(BLOCK_MODE_VALUES[0]),
+                                              BLOCK_MODE_VALUES),
+      .block_mode =
+          {.short_name = 'm',
+           .long_name = "block-mode",
+           .help_text =
+               "Block mode. One of {'linked', 'independent'}. Linked "
+               "blocks compress small blocks better, but some LZ4 decoders "
+               "are only compatible with independent blocks.",
+           .parser = &state.block_mode_parser.argument_parser},
 
-  KeywordArgument *keyword_args[] = {&block_mode, &block_size,
-                                     &favor_decompression_speed, &level};
+      .block_size_parser = make_string_parser("-s, --block-size", "SIZE",
+                                              sizeof(BLOCK_SIZE_VALUES) /
+                                                  sizeof(BLOCK_SIZE_VALUES[0]),
+                                              BLOCK_SIZE_VALUES),
+      .block_size =
+          {.short_name = 's',
+           .long_name = "block-size",
+           .help_text =
+               "Maximum block size. One of {'default', '64KB', '256KB', "
+               "'1MB', '4MB'}. The larger the block size, the better the "
+               "compression ratio, but at the cost of increased memory "
+               "usage when compressing and decompressing.",
+           .parser = &state.block_size_parser.argument_parser},
 
-  Arguments arguments = {
-      .executable_name = "mmap-lz4-compress",
-      .version = "0.2.1",
-      .author = "Gregory Meyer <me@gregjm.dev>",
-      .description =
-          "mmap-lz4-compress (mlc) compresses a file using the LZ4 compression "
-          "algorithm. liblz4 is used for compression and memory-mapped files "
-          "are used to read and write data to disk.",
+      .favor_decompression_speed = {.short_name = 'd',
+                                    .long_name = "favor-decompression-speed",
+                                    .help_text =
+                                        "If set, the parser will favor "
+                                        "decompression speed over compression "
+                                        "ratio. Only works for compression "
+                                        "levels of at least " STRINGIFY(
+                                            LZ4HC_CLEVEL_OPT_MIN) ".",
+                                    .parser = NULL},
 
-      .positional_args = positional_args,
-      .num_positional_args =
-          sizeof(positional_args) / sizeof(positional_args[0]),
+      .level_parser = make_integer_parser("-l, --level", "LEVEL",
+                                          (long long)INT_MIN, LZ4HC_CLEVEL_MAX),
+      .level = {.short_name = 'l',
+                .long_name = "level",
+                .help_text = level_help_text,
+                .parser = &state.level_parser.argument_parser},
 
-      .keyword_args = keyword_args,
-      .num_keyword_args = sizeof(keyword_args) / sizeof(keyword_args[0])};
+      .preferences = LZ4F_INIT_PREFERENCES,
+  };
 
-  Error error = parse_arguments(&arguments, argc, argv);
+  KeywordArgument *keyword_args[] = {&state.block_mode, &state.block_size,
+                                     &state.favor_decompression_speed,
+                                     &state.level};
 
-  if (error.what) {
-    print_error(error);
+  return run_compression_app(
+      argc, argv,
+      &(AppParams){
+          .executable_name = "mmap-lz4-compress",
+          .version = "0.2.1",
+          .author = "Gregory Meyer <me@gregjm.dev>",
+          .description =
+              "mmap-lz4-compress (mlc) compresses a file using the LZ4 "
+              "compression algorithm. liblz4 is used for compression and "
+              "memory-mapped files are used to read and write data to disk.",
 
-    return EXIT_FAILURE;
+          .keyword_args = keyword_args,
+          .num_keyword_args = sizeof(keyword_args) / sizeof(keyword_args[0]),
+
+          .size = size,
+          .run = run,
+          .arg = &state,
+      });
+}
+
+size_t size(size_t input_file_size, void *state_v) {
+  assert(state_v);
+
+  State *const state = (State *)state_v;
+
+  if (state->favor_decompression_speed.was_found) {
+    state->preferences.favorDecSpeed = 1;
   }
 
-  if (arguments.has_help) {
-    print_help(&arguments);
-
-    return EXIT_SUCCESS;
-  } else if (arguments.has_version) {
-    print_version(&arguments);
-
-    return EXIT_SUCCESS;
+  if (state->level.was_found) {
+    state->preferences.compressionLevel = (int)state->level_parser.value;
   }
 
-  LZ4F_preferences_t preferences = LZ4F_INIT_PREFERENCES;
-
-  if (favor_decompression_speed.was_found) {
-    preferences.favorDecSpeed = 1;
+  if (state->block_mode.was_found) {
+    state->preferences.frameInfo.blockMode =
+        BLOCK_MODE_MAPPING[state->block_mode_parser.value_index];
   }
 
-  if (level.was_found) {
-    preferences.compressionLevel = (int)level_parser.value;
+  if (state->block_size.was_found) {
+    state->preferences.frameInfo.blockSizeID =
+        BLOCK_SIZE_MAPPING[state->block_size_parser.value_index];
   }
 
-  if (block_mode.was_found) {
-    preferences.frameInfo.blockMode =
-        block_mode_mapping[block_mode_parser.value_index];
-  }
+  state->preferences.frameInfo.contentSize =
+      (unsigned long long)input_file_size;
 
-  if (block_size.was_found) {
-    preferences.frameInfo.blockSizeID =
-        block_size_mapping[block_size_parser.value_index];
-  }
+  return LZ4F_compressFrameBound(input_file_size, &state->preferences);
+}
 
-  FileAndMapping input_file;
-  error = open_and_map_file(input_filename_parser.value, &input_file);
+Error run(AppIOState *io_state, bool *finished, void *state_v) {
+  assert(io_state);
+  assert(finished);
+  assert(state_v);
 
-  if (error.what) {
-    print_error(error);
+  State *const state = (State *)state_v;
 
-    return EXIT_FAILURE;
-  }
-
-  preferences.frameInfo.contentSize = (unsigned long long)input_file.size;
-
-  const size_t output_file_size =
-      LZ4F_compressFrameBound(input_file.size, &preferences);
-
-  int return_code = EXIT_SUCCESS;
-  FileAndMapping output_file;
-  error = create_and_map_file(output_filename_parser.value, output_file_size,
-                              &output_file);
-
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-
-    goto cleanup_input_only;
-  }
-
-  posix_madvise(input_file.contents, input_file.size, POSIX_MADV_SEQUENTIAL);
-  posix_madvise(output_file.contents, output_file.size, POSIX_MADV_SEQUENTIAL);
-
-  const size_t output_final_size_or_error =
-      LZ4F_compressFrame(output_file.contents, output_file.size,
-                         input_file.contents, input_file.size, &preferences);
+  const size_t output_final_size_or_error = LZ4F_compressFrame(
+      io_state->output_file.mapping, io_state->output_file.mapping_size,
+      io_state->input_file.mapping, io_state->input_file.mapping_size,
+      &state->preferences);
 
   if (LZ4F_isError(output_final_size_or_error)) {
     const char *const what = LZ4F_getErrorName(output_final_size_or_error);
 
-    print_error(eformat("couldn't compress input file '%s': %s (%zu)",
-                        input_filename_parser.value, what,
-                        output_final_size_or_error));
-    return_code = EXIT_FAILURE;
-  } else if (ftruncate(output_file.fd, (off_t)output_final_size_or_error) ==
-             -1) {
-    print_error(ERRNO_EFORMAT("couldn't resize output file '%s'",
-                              output_filename_parser.value));
-    return_code = EXIT_FAILURE;
+    return eformat("couldn't compress input file '%s': %s (%zu)",
+                   io_state->input_file.filename, what,
+                   output_final_size_or_error);
   }
 
-  error = free_file(output_file);
+  io_state->input_mapping_first_unused_offset =
+      io_state->input_file.mapping_size;
+  io_state->output_mapping_first_unused_offset = output_final_size_or_error;
+  io_state->output_bytes_written = output_final_size_or_error;
 
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-  }
+  *finished = true;
 
-  if (return_code != EXIT_SUCCESS) {
-    if (unlink(output_filename_parser.value) == -1) {
-      print_error(ERRNO_EFORMAT("couldn't remove file '%s'",
-                                output_filename_parser.value));
-    }
-  }
-
-cleanup_input_only:
-  error = free_file(input_file);
-
-  if (error.what) {
-    print_error(error);
-    return_code = EXIT_FAILURE;
-  }
-
-  return return_code;
+  return NULL_ERROR;
 }

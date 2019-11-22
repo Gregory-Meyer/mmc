@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "argparse.h"
+#include <common/argparse.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -70,6 +70,7 @@ IntegerArgumentParser make_integer_parser(const char *name,
                                           long long min_value,
                                           long long max_value) {
   assert(name);
+  assert(metavariable);
   assert(min_value <= max_value);
 
   return (IntegerArgumentParser){
@@ -77,21 +78,34 @@ IntegerArgumentParser make_integer_parser(const char *name,
                           .metavariable = metavariable,
                           .parser = do_parse_integer},
       .min_value = min_value,
-      .max_value = max_value};
+      .max_value = max_value,
+  };
 }
 
 StringArgumentParser
 make_string_parser(const char *name, const char *metavariable,
                    size_t num_possible_values,
-                   const char *possible_values[num_possible_values]) {
+                   const char *const possible_values[num_possible_values]) {
   assert(name);
+  assert(metavariable);
+
+#ifndef NDEBUG
+  if (num_possible_values > 0) {
+    assert(possible_values);
+
+    for (size_t i = 0; i < num_possible_values; ++i) {
+      assert(possible_values[i]);
+    }
+  }
+#endif
 
   return (StringArgumentParser){
       .argument_parser = {.name = name,
                           .metavariable = metavariable,
                           .parser = do_parse_string},
       .possible_values = possible_values,
-      .num_possible_values = num_possible_values};
+      .num_possible_values = num_possible_values,
+  };
 }
 
 PassthroughArgumentParser make_passthrough_parser(const char *name,
@@ -911,7 +925,8 @@ static Error do_parse_integer(ArgumentParser *self_base,
   return NULL_ERROR;
 }
 
-static char *stringify_string_array(const char **strings, size_t num_strings);
+static char *stringify_string_array(const char *const *strings,
+                                    size_t num_strings);
 
 static Error do_parse_string(ArgumentParser *self_base,
                              const char *maybe_value_str) {
@@ -957,7 +972,8 @@ static Error do_parse_passthrough(ArgumentParser *self_base,
   return NULL_ERROR;
 }
 
-static char *stringify_string_array(const char **strings, size_t num_strings) {
+static char *stringify_string_array(const char *const *strings,
+                                    size_t num_strings) {
   if (num_strings == 0) {
     char *buffer = malloc(3);
 
