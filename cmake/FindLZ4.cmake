@@ -1,4 +1,4 @@
-find_package(PkgConfig)
+find_package(PkgConfig REQUIRED)
 pkg_check_modules(PC_LZ4 QUIET liblz4)
 
 find_path(LZ4_INCLUDE_DIR
