@@ -21,6 +21,7 @@
 #include <common/app.h>
 #include <common/argparse.h>
 #include <common/error.h>
+#include <common/mmc.h>
 
 #include <assert.h>
 #include <stdbool.h>
@@ -84,8 +85,8 @@ int main(int argc, const char *const argv[]) {
       argc, argv,
       &(AppParams){
           .executable_name = "mmap-deflate",
-          .version = "0.2.1",
-          .author = "Gregory Meyer <me@gregjm.dev>",
+          .version = MMC_VERSION,
+          .author = MMC_AUTHOR,
           .description = "mmap-deflate (md) compresses a file using the "
                          "DEFLATE compression "
                          "algorithm. zlib is used for compression and "

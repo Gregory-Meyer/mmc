@@ -20,6 +20,7 @@
 
 #include <common/app.h>
 #include <common/error.h>
+#include <common/mmc.h>
 
 #include <assert.h>
 #include <stdbool.h>
@@ -41,8 +42,8 @@ int main(int argc, const char *const argv[]) {
       argc, argv,
       &(AppParams){
           .executable_name = "mmap-inflate",
-          .version = "0.2.1",
-          .author = "Gregory Meyer <me@gregjm.dev>",
+          .version = MMC_VERSION,
+          .author = MMC_AUTHOR,
           .description =
               "mmap-inflate (mi) decompresses a file that was compressed by "
               "mmap-deflate (md) using the DEFLATE compression algorithm. zlib "

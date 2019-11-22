@@ -20,6 +20,7 @@
 
 #include <common/app.h>
 #include <common/error.h>
+#include <common/mmc.h>
 
 #include <assert.h>
 #include <stdbool.h>
@@ -40,8 +41,8 @@ int main(int argc, const char *const argv[]) {
       argc, argv,
       &(AppParams){
           .executable_name = "mmap-lz4-decompress",
-          .version = "0.2.1",
-          .author = "Gregory Meyer <me@gregjm.dev>",
+          .version = MMC_VERSION,
+          .author = MMC_AUTHOR,
           .description =
               "mmap-lz4-decompress (mld) uncompresses a file using the LZ4 "
               "compression algorithm. liblz4 is used for decompression and "
