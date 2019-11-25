@@ -21,7 +21,7 @@
 #ifndef COMMON_MMC_H
 #define COMMON_MMC_H
 
-#define MMC_VERSION "0.2.2"
+#define MMC_VERSION "0.3.0"
 #define MMC_AUTHOR "Gregory Meyer <me@gregjm.dev>"
 
 #endif
