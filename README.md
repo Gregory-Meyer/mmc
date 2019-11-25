@@ -1,9 +1,9 @@
 # Memory-Mapped File Compression (mmc)
 
 mmc is a set of file compression and decompression utilities built as frontends
-to zlib and liblz4. File I/O is accomplished using [`mmap(2)`], with calls to
-[`ftruncate(2)`] and [`mremap(2)`] to increase the size of the output file as
-appropriate.
+to zlib, liblz4, and libzstd. File I/O is accomplished using [`mmap(2)`], with
+calls to [`ftruncate(2)`] and [`mremap(2)`] to increase the size of the output
+file as appropriate.
 
 ## Usage
 
@@ -12,10 +12,14 @@ appropriate.
 md $UNCOMPRESSED $COMPRESSED --level=$LEVEL --strategy=$STRATEGY
 mi $COMPRESSED $UNCOMPRESSED
 
-# liblz4 frontends
+# lz4 frontends
 mlc $UNCOMPRESSED $COMPRESSED --block-mode=$MODE --block-size=$SIZE \
     --favor-decompression-speed --compression-level=$LEVEL
 mld $COMPRESSED $UNCOMPRESSED
+
+# zstd frontends
+mzc $UNCOMPRESSED $COMPRESSED --level=$LEVEL --strategy=$STRATEGY
+mzd $COMPRESSED $UNCOMPRESSED
 ```
 
 mmap-deflate and mmap-inflate operate on raw zlib formatted archives. The zlib
@@ -27,6 +31,12 @@ interoperable with archives produced by lz4(1). The LZ4 parameters
 used by mmap-lz4-compress can be tuned using the (`-m`, `--block-mode`),
 (`-s`, `--block-size`), (`-d`, `--favor-decompression-speed`), and (`-l`,
 `--level`) options.
+
+mmap-zstd-compress and mmap-zstd-decompress operate on Zstandard archives and
+are interoperable with those produced by zstd(1). The Zstandard compression
+parameters (`-l`, `--level`) and (`-s`, `--strategy`) can be tuned. Future
+versions of mmc may add more options to turn more of the myriad knobs that the
+Zstandard compression algorithm offers.
 
 Further usage information can be viewed by using the `-h`, `--help` option.
 

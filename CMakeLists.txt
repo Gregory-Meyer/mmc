@@ -18,6 +18,13 @@ else()
     find_package(LZ4 1.8.3)
 endif()
 
+option(ENABLE_ZSTD "Build frontends for zstd, mmap-zstd-compress (mzc) and mmap-zstd-decompress (mzd)." OFF)
+if(ENABLE_ZSTD)
+    find_package(zstd 1.4 REQUIRED)
+else()
+    find_package(zstd 1.4 REQUIRED)
+endif()
+
 add_compile_definitions(_GNU_SOURCE)
 
 if(ZLIB_FOUND)
@@ -58,6 +65,26 @@ if(LZ4_FOUND)
     )
 
     install(TARGETS mlc mld DESTINATION bin)
+endif()
+
+if(zstd_FOUND)
+    add_executable(mzc src/zstd_compress.c)
+    target_compile_features(mzc PRIVATE c_std_99)
+    target_link_libraries(mzc PRIVATE common zstd::zstd)
+    set_target_properties(mzc PROPERTIES
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+    )
+
+    add_executable(mzd src/zstd_decompress.c)
+    target_compile_features(mzd PRIVATE c_std_99)
+    target_link_libraries(mzd PRIVATE common zstd::zstd)
+    set_target_properties(mzd PROPERTIES
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+    )
+
+    install(TARGETS mzc mzd DESTINATION bin)
 endif()
 
 add_library(common src/app.c src/argparse.c src/error.c src/file.c src/trie.c)
