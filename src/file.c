@@ -121,6 +121,10 @@ Error unmap_unused_pages(FileAndMapping *file, size_t *first_unused_offset) {
 
   static const size_t UNMAP_SPAN_SIZE = 1 << 16;
 
+  if (*first_unused_offset == 0) {
+    return NULL_ERROR;
+  }
+
   const size_t num_spans_to_unmap =
       (*first_unused_offset - 1) / UNMAP_SPAN_SIZE;
 
