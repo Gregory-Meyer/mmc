@@ -45,7 +45,7 @@ int main(int argc, const char *const argv[]) {
           .author = MMC_AUTHOR,
           .description =
               "mmap-lz4-decompress (mld) uncompresses a file using the LZ4 "
-              "compression algorithm. liblz4 is used for decompression and "
+              "compression algorithm. lz4 is used for decompression and "
               "memory-mapped files are used to read and write data to disk.",
 
           .size = size,

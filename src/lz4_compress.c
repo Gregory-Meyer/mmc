@@ -127,7 +127,7 @@ int main(int argc, const char *const argv[]) {
           .author = MMC_AUTHOR,
           .description =
               "mmap-lz4-compress (mlc) compresses a file using the LZ4 "
-              "compression algorithm. liblz4 is used for compression and "
+              "compression algorithm. lz4 is used for compression and "
               "memory-mapped files are used to read and write data to disk.",
 
           .keyword_args = keyword_args,
