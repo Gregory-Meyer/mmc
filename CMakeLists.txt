@@ -22,7 +22,7 @@ option(ENABLE_ZSTD "Build frontends for zstd, mmap-zstd-compress (mzc) and mmap-
 if(ENABLE_ZSTD)
     find_package(zstd 1.4 REQUIRED)
 else()
-    find_package(zstd 1.4 REQUIRED)
+    find_package(zstd 1.4)
 endif()
 
 add_compile_definitions(_GNU_SOURCE)
