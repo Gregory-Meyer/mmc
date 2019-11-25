@@ -60,7 +60,7 @@ if(LZ4_FOUND)
     install(TARGETS mlc mld DESTINATION bin)
 endif()
 
-add_library(common src/app.c src/argparse.c src/error.c src/file.c)
+add_library(common src/app.c src/argparse.c src/error.c src/file.c src/trie.c)
 target_compile_features(common PUBLIC c_std_99)
 target_include_directories(common PUBLIC include)
 set_target_properties(common PROPERTIES

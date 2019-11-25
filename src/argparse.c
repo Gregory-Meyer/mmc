@@ -20,31 +20,13 @@
 
 #include <common/argparse.h>
 
+#include "trie.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-
-// [A-Za-z0-9\-]
-#define NUM_NODE_CHILDREN 63
-
-typedef struct TrieNode {
-  size_t child_offsets[NUM_NODE_CHILDREN];
-  KeywordArgument *value;
-} TrieNode;
-
-typedef struct TrieArena {
-  TrieNode *root;
-  size_t size;
-  size_t capacity;
-} TrieArena;
-
-static size_t char_to_index(char ch);
-static KeywordArgument *find(const TrieNode *node, const char *key,
-                             const char **maybe_value);
-static size_t insert_unique(TrieArena *arena, size_t node_offset,
-                            const char *key, KeywordArgument *value);
 
 static Error do_parse_integer(ArgumentParser *self_base,
                               const char *maybe_value_str);
@@ -52,18 +34,6 @@ static Error do_parse_string(ArgumentParser *self_base,
                              const char *maybe_value_str);
 static Error do_parse_passthrough(ArgumentParser *self_base,
                                   const char *maybe_value_str);
-
-static size_t char_to_index(char ch) {
-  if (ch >= 'a' && ch <= 'z') {
-    return (size_t)(ch - 'a');
-  } else if (ch >= 'A' && ch <= 'Z') {
-    return (size_t)(ch - 'A') + 26;
-  } else if (ch >= '0' && ch <= '9') {
-    return (size_t)(ch - '0') + 52;
-  } else {
-    return SIZE_MAX;
-  }
-}
 
 IntegerArgumentParser make_integer_parser(const char *name,
                                           const char *metavariable,
@@ -793,99 +763,6 @@ static Error print_version_info(void) {
   }
 
   return NULL_ERROR;
-}
-
-static KeywordArgument *find(const TrieNode *node, const char *key,
-                             const char **maybe_value) {
-  assert(node);
-  assert(key);
-  assert(maybe_value);
-
-  if (*key == '\0') {
-    *maybe_value = NULL;
-
-    return node->value;
-  } else if (*key == '=') {
-    *maybe_value = key + 1;
-
-    return node->value;
-  }
-
-  size_t index = char_to_index(*key);
-
-  if (index == SIZE_MAX) {
-    if (*key == '-') {
-      index = NUM_NODE_CHILDREN - 1;
-    } else {
-      return NULL;
-    }
-  }
-
-  const size_t child_offset = node->child_offsets[index];
-
-  if (child_offset == 0) {
-    return NULL;
-  }
-
-  return find(node + child_offset, key + 1, maybe_value);
-}
-
-static size_t insert_unique(TrieArena *arena, size_t node_offset,
-                            const char *key, KeywordArgument *value) {
-  assert(arena);
-
-  assert(arena->root);
-  assert(arena->size > node_offset);
-
-  assert(key);
-  assert(value);
-
-  TrieNode *this_node = &arena->root[node_offset];
-
-  if (*key == '\0') {
-    assert(!this_node->value);
-    this_node->value = value;
-
-    return node_offset;
-  }
-
-  size_t index = char_to_index(*key);
-
-  if (index == SIZE_MAX) {
-    assert(*key == '-');
-    index = NUM_NODE_CHILDREN - 1;
-  }
-
-  size_t *maybe_child_offset = &this_node->child_offsets[index];
-
-  if (*maybe_child_offset == 0) {
-    if (arena->size == arena->capacity) {
-      const size_t new_capacity = arena->capacity * 2;
-      TrieNode *const new_root =
-          realloc(arena->root, new_capacity * sizeof(TrieNode));
-
-      if (!new_root) {
-        return SIZE_MAX;
-      }
-
-      arena->root = new_root;
-      arena->capacity = new_capacity;
-
-      this_node = &arena->root[node_offset];
-      maybe_child_offset = &this_node->child_offsets[index];
-    }
-
-    const size_t new_child_offset = arena->size;
-    ++arena->size;
-
-    TrieNode *const new_child = arena->root + new_child_offset;
-    *new_child = (TrieNode){.child_offsets = {0}, .value = NULL};
-
-    *maybe_child_offset = new_child_offset - node_offset;
-  }
-
-  return insert_unique(arena, node_offset + *maybe_child_offset, key + 1,
-                       value);
 }
 
 static Error do_parse_integer(ArgumentParser *self_base,
